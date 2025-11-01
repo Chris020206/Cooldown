@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Threading;
 using System.Windows.Threading;
 using Cooldown.Blocker.Core;
@@ -259,21 +258,9 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private async void OnBlockedAppPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        try
-        {
-            await SaveConfigurationAsync();
-            await _dispatcher.InvokeAsync(() => ErrorMessage = null);
-        }
-        catch (Exception ex)
-        {
-            await _dispatcher.InvokeAsync(() =>
-            {
-                ErrorMessage = $"Failed to save changes: {ex.Message}";
-                StatusMessage = "Save failed";
-            });
-        }
+        _ = SaveConfigurationAsync();
     }
 
     private void InsertBlockedApp(BlockedAppViewModel app)
@@ -289,7 +276,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLockStateChanged(object? sender, LockStateChangedEventArgs e)
     {
-        _ = _dispatcher.InvokeAsync(() => UpdateLockState(e.State));
+        _dispatcher.Invoke(() => UpdateLockState(e.State));
     }
 
     private void UpdateLockState(LockState state)
@@ -340,7 +327,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnProcessBlocked(object? sender, ProcessBlockedEventArgs e)
     {
-        _ = _dispatcher.InvokeAsync(() =>
+        _dispatcher.Invoke(() =>
         {
             ActivityLog.Insert(0, new ProcessEventViewModel
             {
