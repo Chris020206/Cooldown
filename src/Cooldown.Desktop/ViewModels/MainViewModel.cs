@@ -266,8 +266,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private void InsertBlockedApp(BlockedAppViewModel app)
     {
         var index = 0;
-        while (index < BlockedApps.Count &&
-               string.Compare(BlockedApps[index].Name, app.Name, StringComparison.OrdinalIgnoreCase) < 0)
+        while (index < BlockedApps.Count && string.Compare(BlockedApps[index].Name, app.Name, StringComparer.OrdinalIgnoreCase) < 0)
         {
             index++;
         }
