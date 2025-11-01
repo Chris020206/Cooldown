@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cooldown.GG – Global Esports Cooldowns</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <div class="logo">
+          <span aria-hidden="true">🔥</span>
+          <h1>Cooldown.GG</h1>
+        </div>
+        <p class="tagline">Track the next drop in esports around the globe.</p>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="panel" aria-labelledby="filters-title">
+        <div class="panel-header">
+          <h2 id="filters-title">Filters</h2>
+          <button id="reset-filters" class="link-button" type="button">
+            Reset
+          </button>
+        </div>
+        <form id="filters" class="filters" autocomplete="off">
+          <label class="field">
+            <span>Game</span>
+            <select id="filter-game" name="game">
+              <option value="all">All titles</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Region</span>
+            <select id="filter-region" name="region">
+              <option value="all">Anywhere</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Status</span>
+            <select id="filter-status" name="status">
+              <option value="upcoming">Upcoming</option>
+              <option value="live">Live</option>
+              <option value="completed">Completed</option>
+              <option value="all">Everything</option>
+            </select>
+          </label>
+          <label class="field checkbox-field">
+            <input id="filter-major" name="major" type="checkbox" />
+            <span>Only major events</span>
+          </label>
+        </form>
+        <p class="helper-text">
+          All times are shown in your local timezone. Countdown timers update
+          automatically.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="schedule-title">
+        <div class="panel-header">
+          <h2 id="schedule-title">Schedule</h2>
+          <span id="visible-count" class="badge" aria-live="polite"></span>
+        </div>
+        <div id="empty-state" class="empty-state" hidden>
+          <p>No events match your filters (yet).</p>
+        </div>
+        <ol id="event-list" class="event-list" aria-live="polite"></ol>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>
+          Data is curated manually for this prototype. Follow official event
+          channels for the most accurate information.
+        </p>
+      </div>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
