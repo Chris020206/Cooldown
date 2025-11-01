@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Windows.Threading;
@@ -258,9 +259,16 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private async void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        _ = SaveConfigurationAsync();
+        try
+        {
+            await SaveConfigurationAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to save changes: {ex.Message}";
+        }
     }
 
     private void InsertBlockedApp(BlockedAppViewModel app)
