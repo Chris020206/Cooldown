@@ -38,4 +38,3 @@ Windows desktop app that **removes the decision to play** during focus periods b
 ## 7. Open Questions
 - Final emergency unlock friction (copy & timer length) → validate in beta.
 - Code signing vendor & cert timeline.
-*** End Patch
