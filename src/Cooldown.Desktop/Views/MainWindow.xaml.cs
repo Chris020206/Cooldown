@@ -8,7 +8,6 @@ namespace Cooldown.Desktop.Views;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
-    private readonly ToastNotificationService _toastService;
 
     public MainWindow()
     {
@@ -17,8 +16,6 @@ public partial class MainWindow : Window
         var engineHost = new BlockerEngineHost();
         _viewModel = new MainViewModel(configService, engineHost, Dispatcher);
         DataContext = _viewModel;
-        _toastService = new ToastNotificationService();
-        _viewModel.ToastRequested += OnToastRequested;
         Loaded += OnLoadedAsync;
         Closed += OnClosedAsync;
     }
@@ -30,13 +27,6 @@ public partial class MainWindow : Window
 
     private async void OnClosedAsync(object? sender, EventArgs e)
     {
-        _viewModel.ToastRequested -= OnToastRequested;
-        _toastService.Dispose();
         await _viewModel.DisposeAsync();
-    }
-
-    private void OnToastRequested(object? sender, ToastNotificationEventArgs e)
-    {
-        _toastService.Show(e.Title, e.Message);
     }
 }
