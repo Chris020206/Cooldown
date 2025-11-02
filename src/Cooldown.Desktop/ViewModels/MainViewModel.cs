@@ -1,6 +1,4 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading;
 using System.Windows.Threading;
 using Cooldown.Blocker.Core;
@@ -26,8 +24,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private string _statusMessage = "Loading...";
     private string? _errorMessage;
     private bool _isEngineRunning;
-
-    public event EventHandler<ToastNotificationEventArgs>? ToastRequested;
 
     public MainViewModel(BlockerConfigService configService, BlockerEngineHost engineHost, Dispatcher dispatcher)
     {
@@ -134,7 +130,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         _engineHost.LockStateChanged += OnLockStateChanged;
         _engineHost.ProcessBlocked += OnProcessBlocked;
-        _engineHost.PreExistingProcessesTerminated += OnPreExistingProcessesTerminated;
 
         await _engineHost.StartAsync(_config);
         IsEngineRunning = true;
@@ -271,8 +266,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private void InsertBlockedApp(BlockedAppViewModel app)
     {
         var index = 0;
-        while (index < BlockedApps.Count &&
-               string.Compare(BlockedApps[index].Name, app.Name, StringComparison.OrdinalIgnoreCase) < 0)
+        while (index < BlockedApps.Count && string.Compare(BlockedApps[index].Name, app.Name, StringComparer.OrdinalIgnoreCase) < 0)
         {
             index++;
         }
@@ -354,7 +348,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _timer.Stop();
         _engineHost.LockStateChanged -= OnLockStateChanged;
         _engineHost.ProcessBlocked -= OnProcessBlocked;
-        _engineHost.PreExistingProcessesTerminated -= OnPreExistingProcessesTerminated;
         foreach (var app in BlockedApps)
         {
             app.PropertyChanged -= OnBlockedAppPropertyChanged;
@@ -362,39 +355,5 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         await _engineHost.DisposeAsync();
         _saveLock.Dispose();
-    }
-
-    private void OnPreExistingProcessesTerminated(object? sender, PreExistingProcessesTerminatedEventArgs e)
-    {
-        _dispatcher.Invoke(() =>
-        {
-            var message = e.TerminatedCount switch
-            {
-                0 => "No blocked apps were running at lock activation.",
-                1 => "Closed 1 blocked app at lock activation.",
-                _ => $"Closed {e.TerminatedCount} blocked apps at lock activation."
-            };
-
-            ActivityLog.Insert(0, new ProcessEventViewModel
-            {
-                Timestamp = DateTimeOffset.Now,
-                ProcessName = "Lock Enforcement",
-                Message = message
-            });
-
-            while (ActivityLog.Count > ActivityLogLimit)
-            {
-                ActivityLog.RemoveAt(ActivityLog.Count - 1);
-            }
-
-            StatusMessage = message;
-
-            if (e.LockType == LockType.Soft && e.TerminatedCount > 0)
-            {
-                ToastRequested?.Invoke(this, new ToastNotificationEventArgs(
-                    "Cooldown.gg",
-                    "Blocked apps were closed to enforce the lock."));
-            }
-        });
     }
 }

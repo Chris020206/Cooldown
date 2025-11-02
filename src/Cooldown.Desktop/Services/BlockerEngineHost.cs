@@ -9,7 +9,6 @@ public sealed class BlockerEngineHost : IAsyncDisposable
 
     public event EventHandler<LockStateChangedEventArgs>? LockStateChanged;
     public event EventHandler<ProcessBlockedEventArgs>? ProcessBlocked;
-    public event EventHandler<PreExistingProcessesTerminatedEventArgs>? PreExistingProcessesTerminated;
 
     public bool IsRunning => _engine != null;
 
@@ -24,7 +23,6 @@ public sealed class BlockerEngineHost : IAsyncDisposable
         _engine = new BlockerEngine(config);
         _engine.LockStateChanged += OnLockStateChanged;
         _engine.ProcessBlocked += OnProcessBlocked;
-        _engine.PreExistingProcessesTerminated += OnPreExistingProcessesTerminated;
         await _engine.StartAsync();
     }
 
@@ -62,7 +60,6 @@ public sealed class BlockerEngineHost : IAsyncDisposable
 
         _engine.LockStateChanged -= OnLockStateChanged;
         _engine.ProcessBlocked -= OnProcessBlocked;
-        _engine.PreExistingProcessesTerminated -= OnPreExistingProcessesTerminated;
         await _engine.DisposeAsync();
         _engine = null;
     }
@@ -83,10 +80,5 @@ public sealed class BlockerEngineHost : IAsyncDisposable
     private void OnProcessBlocked(object? sender, ProcessBlockedEventArgs e)
     {
         ProcessBlocked?.Invoke(this, e);
-    }
-
-    private void OnPreExistingProcessesTerminated(object? sender, PreExistingProcessesTerminatedEventArgs e)
-    {
-        PreExistingProcessesTerminated?.Invoke(this, e);
     }
 }

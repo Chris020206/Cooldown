@@ -4,7 +4,7 @@ This repository contains the building blocks for Cooldown.GG, a Windows applicat
 
 ## Highlights
 
-- **Shared blocking engine** – `Cooldown.Blocker.Core` exposes a reusable API for creating locks, monitoring running processes, and terminating offenders with process-tree aware enforcement, WMI fallbacks, and immediate shutdown of already-running blocked apps when a lock begins.
+- **Shared blocking engine** – `Cooldown.Blocker.Core` exposes a reusable API for creating locks, monitoring running processes, and terminating offenders with process-tree aware enforcement and WMI fallbacks.
 - **Desktop dashboard (WPF)** – `Cooldown.Desktop` provides a dark, gaming-inspired UI where users can start soft or hard locks, monitor countdowns in real time, curate the blocked app list, and review recent enforcement activity.
 - **Console PoC retained** – `BlockerPoC` still offers the lightweight CLI demonstrated in early testing, now powered by the shared engine so new engine improvements automatically flow to the command-line tool.
 - **Config persistence** – Both the desktop app and the PoC load or bootstrap a JSON configuration describing blocked apps and monitoring behavior. The desktop app stores user settings in `%AppData%\CooldownGG` while the PoC continues to use its local folder for easy iteration.
@@ -30,14 +30,6 @@ README.md                     -- Project overview and usage instructions
 - Windows 10/11 device with the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) installed.
 - Visual Studio 2022 (17.8+) or Rider for running the WPF application.
 - Administrator privileges when executing locks so the engine can terminate protected processes.
-
-### Required Visual Studio 2022 templates
-
-Ensure the following project templates are installed in Visual Studio 2022 so the included solutions load without prompts:
-
-- **WPF App (.NET)** – used by `src/Cooldown.Desktop` for the desktop shell.
-- **Class Library (.NET)** – used by `src/Cooldown.Blocker.Core` for the shared blocking engine.
-- **Console App (.NET)** – used by `BlockerPoC` for the command-line proof of concept.
 
 ## Running the WPF desktop app
 
