@@ -12,4 +12,3 @@
 | Privacy-first | R7 / PRD §5 | Phase 4.6 + App E | No process names in cloud | NPS > 40 |
 
 *IDs reference: BRD §6 (R-series) and PRD §2 (FR-series).*
-*** End Patch
