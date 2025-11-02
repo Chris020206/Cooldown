@@ -6,7 +6,6 @@ public sealed class ProcessMonitor
 {
     private readonly object _namesLock = new();
     private readonly HashSet<int> _seenProcessIds = new();
-    private readonly object _seenLock = new();
     private HashSet<string> _blockedNames;
     private int _checkIntervalMs;
 
@@ -68,23 +67,16 @@ public sealed class ProcessMonitor
             {
                 currentPids.Add(proc.Id);
 
+                if (_seenProcessIds.Contains(proc.Id))
+                {
+                    continue;
+                }
+
                 var name = proc.ProcessName;
-                var shouldNotify = false;
 
                 if (blockedSnapshot.Contains(name))
                 {
-                    lock (_seenLock)
-                    {
-                        if (!_seenProcessIds.Contains(proc.Id))
-                        {
-                            _seenProcessIds.Add(proc.Id);
-                            shouldNotify = true;
-                        }
-                    }
-                }
-
-                if (shouldNotify)
-                {
+                    _seenProcessIds.Add(proc.Id);
                     ProcessDetected?.Invoke(this, new ProcessDetectedEventArgs
                     {
                         ProcessId = proc.Id,
@@ -98,59 +90,12 @@ public sealed class ProcessMonitor
             }
         }
 
-        lock (_seenLock)
-        {
-            _seenProcessIds.RemoveWhere(pid => !currentPids.Contains(pid));
-        }
+        _seenProcessIds.RemoveWhere(pid => !currentPids.Contains(pid));
     }
 
     private static HashSet<string> CreateNameSet(IEnumerable<string> names)
     {
         return new HashSet<string>(names.Select(NormalizeName), StringComparer.OrdinalIgnoreCase);
-    }
-
-    public IEnumerable<ProcessDetectedEventArgs> GetExistingBlockedProcesses()
-    {
-        HashSet<string> blockedSnapshot;
-        lock (_namesLock)
-        {
-            blockedSnapshot = _blockedNames;
-        }
-
-        if (blockedSnapshot.Count == 0)
-        {
-            yield break;
-        }
-
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                if (!blockedSnapshot.Contains(proc.ProcessName))
-                {
-                    continue;
-                }
-
-                lock (_seenLock)
-                {
-                    _seenProcessIds.Add(proc.Id);
-                }
-
-                yield return new ProcessDetectedEventArgs
-                {
-                    ProcessId = proc.Id,
-                    ProcessName = proc.ProcessName
-                };
-            }
-            catch
-            {
-                // Ignore processes that exit during enumeration.
-            }
-            finally
-            {
-                proc.Dispose();
-            }
-        }
     }
 
     private static string NormalizeName(string name)

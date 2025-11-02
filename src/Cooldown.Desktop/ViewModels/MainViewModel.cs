@@ -1,6 +1,4 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading;
 using System.Windows.Threading;
 using Cooldown.Blocker.Core;
@@ -132,7 +130,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         _engineHost.LockStateChanged += OnLockStateChanged;
         _engineHost.ProcessBlocked += OnProcessBlocked;
-        _engineHost.PreExistingProcessesTerminated += OnPreExistingProcessesTerminated;
 
         await _engineHost.StartAsync(_config);
         IsEngineRunning = true;
@@ -269,8 +266,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private void InsertBlockedApp(BlockedAppViewModel app)
     {
         var index = 0;
-        while (index < BlockedApps.Count &&
-               string.Compare(BlockedApps[index].Name, app.Name, StringComparison.OrdinalIgnoreCase) < 0)
+        while (index < BlockedApps.Count && string.Compare(BlockedApps[index].Name, app.Name, StringComparer.OrdinalIgnoreCase) < 0)
         {
             index++;
         }
@@ -352,7 +348,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _timer.Stop();
         _engineHost.LockStateChanged -= OnLockStateChanged;
         _engineHost.ProcessBlocked -= OnProcessBlocked;
-        _engineHost.PreExistingProcessesTerminated -= OnPreExistingProcessesTerminated;
         foreach (var app in BlockedApps)
         {
             app.PropertyChanged -= OnBlockedAppPropertyChanged;
@@ -360,23 +355,5 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         await _engineHost.DisposeAsync();
         _saveLock.Dispose();
-    }
-
-    private void OnPreExistingProcessesTerminated(object? sender, PreExistingProcessesTerminatedEventArgs e)
-    {
-        if (e.TerminatedCount <= 0)
-        {
-            return;
-        }
-
-        _dispatcher.Invoke(() =>
-        {
-            if (e.LockType == LockType.Soft)
-            {
-                StatusMessage = e.TerminatedCount == 1
-                    ? "Blocked app was closed to enforce the lock."
-                    : "Blocked apps were closed to enforce the lock.";
-            }
-        });
     }
 }

@@ -28,16 +28,6 @@ internal static class Program
                 Console.WriteLine("\n🔓 Lock expired\n");
             }
         };
-        _engine.PreExistingProcessesTerminated += (_, args) =>
-        {
-            if (args.TerminatedCount <= 0)
-            {
-                return;
-            }
-
-            var noun = args.TerminatedCount == 1 ? "app" : "apps";
-            Console.WriteLine($"\n⚠️  Closed {args.TerminatedCount} blocked {noun} at lock activation.");
-        };
 
         await _engine.StartAsync();
         PrintMonitoredProcesses();
