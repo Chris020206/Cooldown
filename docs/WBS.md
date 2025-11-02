@@ -1,6 +1,17 @@
 # Cooldown.gg Work Breakdown Structure (WBS)
 
-*Version: 1.0 FINAL — Last updated November 1, 2025*
+*Version: 1.1 — Last updated November 2, 2025*
+
+> **WBS Addendum (2025-11-02)**  
+> This document now includes:  
+> (1) phase-level **acceptance criteria**,  
+> (2) a **security & tamper model** summary,  
+> (3) **privacy/GDPR** notes,  
+> (4) a **telemetry plan** tied to success metrics,  
+> (5) **release/rollback** guidance,  
+> (6) a compact **QA test matrix**, and  
+> (7) added **risks** & **marketing validation** activities.  
+> These improve execution clarity and demonstrate Business Analyst rigor.
 
 The following WBS captures the phased development plan for turning the Cooldown.gg proof of concept into a production-ready desktop experience.
 
@@ -155,6 +166,14 @@ Timeline: flexible student schedule.
 - Blocking remains reliable with system tray integration
 - Confirmation dialogs prevent accidental hard locks
 
+**Phase 1 Acceptance Criteria**
+
+- WPF app launches on Win10 22H2 and Win11 23H2+; tray icon accessible; start minimized works.
+- Create soft/hard locks from UI; real-time countdown updates ≤1s jitter.
+- Blocked app list: add/remove/toggle; immediate effect without restart.
+- CPU idle < 1%; working set < 100 MB while idle; no unhandled exceptions in session logs.
+- MSIX build artifact produced; install/uninstall succeeds on clean VM.
+
 ## Phase 2: Windows Service & Persistence
 
 Goal: production-grade blocking that survives restarts and resists tampering.
@@ -194,6 +213,14 @@ Goal: production-grade blocking that survives restarts and resists tampering.
 - Secure IPC between UI and service
 - Harder to bypass while keeping emergency unlock safety valve
 
+**Phase 2 Acceptance Criteria**
+- Service (SYSTEM) starts automatically; UI reconnects via named pipes within 2s after service restart.
+- Active lock survives OS reboot; expiry is honored if OS time changed forward/back by ≤5 minutes.
+- IPC restricts client to current user session; requests include per-boot nonce; unauthorized client is rejected and logged.
+- Config stored under `%ProgramData%\CooldownGG`; SQLite schema versioned; migration script tested.
+- Emergency unlock requires ≥60s friction timer + reason entry; event logged locally as “relapse”.
+- Basic tamper checks: missing/broken service → UI banner + repair action; bypass attempts logged.
+
 ## Phase 3: Backend API & Authentication
 
 Goal: enable accounts, authentication, and subscription management.
@@ -228,6 +255,14 @@ Goal: enable accounts, authentication, and subscription management.
 - Users can register, subscribe, and manage billing
 - Desktop app respects subscription status and device limits
 - Offline mode functions for 72 hours
+
+**Phase 3 Acceptance Criteria**
+
+- FastAPI + Postgres deploy with CI/CD; migrations idempotent.
+- JWT + refresh flow; tokens stored with DPAPI; device cap=3 enforced.
+- Stripe Checkout + webhooks: subscription_created/updated/canceled reflected within 60s.
+- Entitlements cached locally; offline grace up to 72h; beyond that, lock creation is disabled and UI explains why.
+- PII minimization: email, hashed device id, coarse events only (no process names in cloud).
 
 ## Phase 4: MVP Polish & Beta Launch
 
@@ -266,6 +301,12 @@ Goal: deliver a production-quality experience.
 - Polished app with smooth onboarding and minimal bugs
 - Legal foundations established
 - Marketing site ready for beta sign-ups
+
+**Phase 4 Acceptance Criteria**
+- Onboarding wizard completes <2 minutes; first lock created successfully by ≥95% test users.
+- Crash rate <5% across QA matrix (see Appendix F); Sentry capturing unhandled exceptions.
+- Privacy Policy, Terms, Refund Policy published; in-app links reachable.
+- Landing page collects ≥25 qualified beta signups; UTM tracked; Plausible configured.
 
 ## Phase 5: Post-MVP Features (Backlog)
 
@@ -345,6 +386,10 @@ Expect some weeks with 20 hours of progress and others with zero; consistency ma
 | Hard to explain value to non-addicted gamers | Medium | Medium | Focus messaging on severe cases and r/StopGaming |
 | Solo founder burnout | Medium | High | Flexible timeline, celebrate wins, maintain sustainability |
 | Technical scope creep | Low | Medium | Keep MVP minimal, defer features, leverage validated PoC |
+| AV/EDR false positives on process kill | Medium | Medium | Code signing, allow-listing docs, signed MSIX. |
+| Installer elevation friction | Medium | Low | Clear rationale in installer/UI; signed package. |
+| Stripe regional/payment edge cases | Low | Medium | Use Stripe Portal; generous grace period; manual override path. |
+| Community pushback on “hard locks” | Low | Medium | Emphasize emergency unlock; informed consent during onboarding. |
 
 ## 📋 Decision Log
 
@@ -457,6 +502,49 @@ You have a roadmap, community, and tooling lined up—time to build Cooldown.gg.
 - Secondary: ProductHunt, Indie Hackers, Twitter/X, gaming Discords
 - SEO keywords: "gaming addiction help", "stop playing League of Legends", "block games on PC", "gaming self-control app"
 
+## Appendix D: Security & Tamper Model (Phase 2 focus)
+
+- **IPC security**: Named pipes scoped to session; per-boot nonce + server-side HMAC over requests; Windows ACLs on pipe.
+- **Privilege split**: UI (user) vs Service (SYSTEM). Service owns termination and persistence.
+- **Emergency unlock**: 60s countdown + reason capture → local event log. No cloud PII for process names.
+- **Safe Mode stance**: We log detection and educate; we don’t play “cat-and-mouse” with kernel features.
+- **Integrity checks**: Service watchdog (SC recovery), file hash check on core binaries (optional), config encryption at rest (DPAPI).
+
+## Appendix E: Privacy & GDPR Notes
+
+- **Data minimization**: No process names or detailed activity sent to cloud by default. Cloud stores: email, hashed device id, coarse counters.
+- **Lawful basis**: Contract (service delivery) + legitimate interests (quality & safety). DSR (access/delete) handled via support email.
+- **Retention**: Local logs rotate (e.g., 30 days). Cloud audit events (coarse) retained ≤12 months.
+- **No sensitive categories**; clear disclosures in Privacy Policy; opt-out of telemetry where feasible without breaking safety.
+
+## Appendix F: Telemetry Plan → Success Metrics
+
+**Local (always on, no PII):** `lock_started`, `lock_canceled`, `lock_expired`, `process_terminated`, `emergency_unlock`.  
+**Cloud (coarse, optional):** daily counters per device/user: `locks_started`, `minutes_locked`, `emergency_unlocks`.  
+**KPIs mapping:** Activation (first week locks ≥3), Trial→Paid (≥20–30%), Churn (<3–5%), Avg locks/user/week (≥10).
+
+## Appendix G: Release & Rollback
+
+- **Versioning**: Semantic versioning (M.m.p). Tag builds; publish signed MSIX.
+- **Crash reporting**: Sentry DSN baked in; symbol uploads automated.
+- **Rollback**: Keep previous MSIX in Releases; user doc “Revert to previous version.”
+- **Hotfix**: Branch from tag, bump patch, fast QA on matrix “smoke” subset, release notes in CHANGELOG.
+
+## Appendix H: QA Test Matrix (excerpt)
+
+| OS | User Type | Scenario | Result |
+| --- | --- | --- | --- |
+| Win10 22H2 | Standard | Soft lock 15m → add/remove blocked app | Pass: countdown, immediate enforcement |
+| Win11 23H2 | Admin | Hard lock 60m → reboot at T+5m | Pass: lock persists; remaining recalculated |
+| Win11 24H2 | Standard | Service restart during active lock | UI reconnect ≤2s; enforcement uninterrupted |
+| Win10 22H2 | Standard | Emergency unlock | 60s friction + reason; event logged |
+
+## Appendix I: Marketing Validation (Phase 1 activities)
+
+- Publish 1-page landing with email capture; 2 short videos (soft vs hard lock demos).
+- Recruit ≥25 beta testers (r/StopGaming/GameQuitters); run 5 user interviews.
+- Track signups and UTM in Plausible; convert 5 early testers to trial at MVP.
+*** End Patch
 ---
 
-*Document version 1.0 FINAL — prepared for immediate execution once approved.*
+*Version: 1.1 — Last updated November 2, 2025*
