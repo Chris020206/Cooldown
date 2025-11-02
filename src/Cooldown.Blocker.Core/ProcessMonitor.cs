@@ -6,6 +6,7 @@ public sealed class ProcessMonitor
 {
     private readonly object _namesLock = new();
     private readonly HashSet<int> _seenProcessIds = new();
+    private readonly object _seenLock = new();
     private HashSet<string> _blockedNames;
     private int _checkIntervalMs;
 
@@ -67,16 +68,23 @@ public sealed class ProcessMonitor
             {
                 currentPids.Add(proc.Id);
 
-                if (_seenProcessIds.Contains(proc.Id))
-                {
-                    continue;
-                }
-
                 var name = proc.ProcessName;
+                var shouldNotify = false;
 
                 if (blockedSnapshot.Contains(name))
                 {
-                    _seenProcessIds.Add(proc.Id);
+                    lock (_seenLock)
+                    {
+                        if (!_seenProcessIds.Contains(proc.Id))
+                        {
+                            _seenProcessIds.Add(proc.Id);
+                            shouldNotify = true;
+                        }
+                    }
+                }
+
+                if (shouldNotify)
+                {
                     ProcessDetected?.Invoke(this, new ProcessDetectedEventArgs
                     {
                         ProcessId = proc.Id,
@@ -88,9 +96,16 @@ public sealed class ProcessMonitor
             {
                 // Process may have exited between enumeration and inspection.
             }
+            finally
+            {
+                proc.Dispose();
+            }
         }
 
-        _seenProcessIds.RemoveWhere(pid => !currentPids.Contains(pid));
+        lock (_seenLock)
+        {
+            _seenProcessIds.RemoveWhere(pid => !currentPids.Contains(pid));
+        }
     }
 
     private static HashSet<string> CreateNameSet(IEnumerable<string> names)
