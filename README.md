@@ -112,3 +112,4 @@ These results validate that the core Cooldown.gg blocking engine is technically 
 ## Next steps
 
 Phase 1 of the WBS focuses on rounding out the desktop UX (system tray, onboarding, installer polish). Subsequent phases address Windows service hardening, persistence, authentication, billing, and the post-MVP roadmap. See the [Cooldown.gg Work Breakdown Structure](docs/WBS.md) for the detailed plan.
+[2025-11-03]
