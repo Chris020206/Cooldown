@@ -38,4 +38,3 @@ AV false positives; Windows updates breaking service; user friction around eleva
 
 ## 9. Success Criteria
 KPIs in §2 met in first 60–90 days of beta; positive qualitative feedback from ≥15 beta users.
-*** End Patch
