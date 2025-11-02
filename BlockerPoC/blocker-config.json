@@ -1,0 +1,17 @@
+{
+  "apps": [
+    { "name": "League of Legends", "enabled": true },
+    { "name": "RiotClientServices", "enabled": true },
+    { "name": "VALORANT", "enabled": true },
+    { "name": "steam", "enabled": true },
+    { "name": "steamwebhelper", "enabled": true },
+    { "name": "EpicGamesLauncher", "enabled": true },
+    { "name": "Battle.net", "enabled": true },
+    { "name": "Overwatch", "enabled": true },
+    { "name": "FortniteClient-Win64-Shipping", "enabled": true },
+    { "name": "csgo", "enabled": true },
+    { "name": "dota2", "enabled": true }
+  ],
+  "checkIntervalMs": 1000,
+  "enableToastNotifications": true
+}
