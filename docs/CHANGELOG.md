@@ -1,4 +1,3 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/CHANGELOG.md b/CHANGELOG.md
 new file mode 100644
 index 0000000000000000000000000000000000000000..6060482c3bf3e35737c6bd762c967c7d502f7cf7
@@ -33,6 +32,3 @@ index 0000000000000000000000000000000000000000..6060482c3bf3e35737c6bd762c967c7d
 +[Unreleased]: https://github.com/cooldown-gg/cooldown/compare/v0.2.0...HEAD
 +[0.2.0]: https://github.com/cooldown-gg/cooldown/compare/v0.1.0...v0.2.0
 +[0.1.0]: https://github.com/cooldown-gg/cooldown/releases/tag/v0.1.0
- 
-EOF
-)
