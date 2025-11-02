@@ -1,0 +1,157 @@
+<Window x:Class="Cooldown.Desktop.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:Cooldown.Desktop.ViewModels"
+        mc:Ignorable="d"
+        Title="Cooldown.gg"
+        Height="720"
+        Width="1100"
+        Background="#0f111a"
+        Foreground="White">
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Background" Value="#2e2f45" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#3d3f5c" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Background" Value="#1c1f2e" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Background" Value="#1c1f2e" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#3d3f5c" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16" VerticalAlignment="Center">
+            <TextBlock Text="Cooldown.gg" FontSize="28" FontWeight="Bold" />
+            <TextBlock Text="  – Take back control of your playtime" FontSize="16" Foreground="#9aa3d8" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="4*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Padding="20" Background="#171a2a" CornerRadius="12" Margin="0,0,16,0">
+                <StackPanel>
+                    <TextBlock Text="Lock Control" FontSize="20" FontWeight="SemiBold" />
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="Status" FontWeight="SemiBold" Foreground="#9aa3d8" />
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="14" />
+                        <TextBlock Text="{Binding ErrorMessage}" FontSize="12" Foreground="#ff6b6b" />
+                    </StackPanel>
+
+                    <StackPanel Margin="0,16,0,0">
+                        <TextBlock Text="Active Lock" FontWeight="SemiBold" Foreground="#9aa3d8" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="Type:" Width="60" />
+                            <TextBlock Text="{Binding LockStatus.LockType}" Margin="12,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="Remaining:" Width="60" />
+                            <TextBlock Text="{Binding LockStatus.Remaining}" Margin="12,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="Ends:" Width="60" />
+                            <TextBlock Text="{Binding LockStatus.EndsAt}" Margin="12,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,12" />
+
+                    <TextBlock Text="Create Lock" FontWeight="SemiBold" Foreground="#9aa3d8" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <StackPanel Width="120" Margin="0,0,12,0">
+                            <TextBlock Text="Preset (minutes)" FontSize="12" Foreground="#9aa3d8" />
+                            <ComboBox ItemsSource="{Binding PresetDurations}" SelectedItem="{Binding SelectedDuration}" />
+                        </StackPanel>
+                        <StackPanel Width="120" Margin="0,0,12,0">
+                            <TextBlock Text="Custom" FontSize="12" Foreground="#9aa3d8" />
+                            <TextBox Text="{Binding CustomDurationMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="120">
+                            <TextBlock Text="Lock Type" FontSize="12" Foreground="#9aa3d8" />
+                            <ComboBox ItemsSource="{Binding LockTypes}" SelectedItem="{Binding SelectedLockType}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Content="Create Lock" Command="{Binding CreateLockCommand}" Width="140" Margin="0,0,12,0" />
+                        <Button Content="Cancel Lock" Command="{Binding CancelLockCommand}" Width="140" IsEnabled="{Binding LockStatus.CanCancel}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Padding="20" Background="#171a2a" CornerRadius="12" Margin="0,0,16,0">
+                <StackPanel>
+                    <TextBlock Text="Blocked Applications" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="Select which processes should be blocked when a lock is active." Foreground="#9aa3d8" Margin="0,6,0,12" TextWrapping="Wrap" />
+                    <ScrollViewer Height="420" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding BlockedApps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type viewModels:BlockedAppViewModel}">
+                                    <Border Margin="0,4,0,4" Padding="12" Background="#1f2235" CornerRadius="8">
+                                        <DockPanel>
+                                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                                <CheckBox IsChecked="{Binding Enabled}" Content="{Binding Name}" Foreground="White" Margin="0,0,12,0" />
+                                            </StackPanel>
+                                            <Button Content="Remove" Width="80" Command="{Binding DataContext.RemoveBlockedAppCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" HorizontalAlignment="Right" />
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <TextBox Width="220" ToolTip="Enter the executable or process name" Text="{Binding NewAppName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,0" />
+                        <Button Content="Add" Width="80" Command="{Binding AddBlockedAppCommand}" Margin="0,0,12,0" />
+                        <Button Content="Save" Width="80" Command="{Binding SaveBlockedAppsCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Padding="20" Background="#171a2a" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock Text="Activity" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="Recent processes that Cooldown.gg blocked." Foreground="#9aa3d8" Margin="0,6,0,12" />
+                    <ListView ItemsSource="{Binding ActivityLog}" Background="Transparent" BorderThickness="0" Height="520">
+                        <ListView.ItemTemplate>
+                            <DataTemplate DataType="{x:Type viewModels:ProcessEventViewModel}">
+                                <Border Margin="0,4,0,4" Padding="12" Background="#1f2235" CornerRadius="8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding ProcessName}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Message}" FontSize="12" Foreground="#cbd0ff" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:t}'}" FontSize="11" Foreground="#7a7f9f" HorizontalAlignment="Right" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
