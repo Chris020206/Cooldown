@@ -6,6 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\src\Cooldown.Blocker.Core\Cooldown.Blocker.Core.csproj" />
+    <ProjectReference Include="$(RepoRoot)src/Cooldown.Blocker.Core/Cooldown.Blocker.Core.csproj" />
   </ItemGroup>
 </Project>

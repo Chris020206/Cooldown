@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace Cooldown.Blocker.Core;
 
 public sealed class BlockerEngine : IAsyncDisposable
@@ -23,6 +25,8 @@ public sealed class BlockerEngine : IAsyncDisposable
     public event EventHandler<LockStateChangedEventArgs>? LockStateChanged;
 
     public event EventHandler<ProcessBlockedEventArgs>? ProcessBlocked;
+
+    public event EventHandler<PreExistingProcessesTerminatedEventArgs>? PreExistingProcessesTerminated;
 
     public async Task StartAsync()
     {
@@ -64,7 +68,15 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public LockState CreateLock(int minutes, LockType type)
     {
-        return _lockManager.CreateLock(minutes, type);
+        var state = _lockManager.CreateLock(minutes, type);
+
+        if (state.IsActive)
+        {
+            var terminated = TerminateExistingBlockedProcesses();
+            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(type, terminated));
+        }
+
+        return state;
     }
 
     public bool CancelLock()
@@ -89,13 +101,7 @@ public sealed class BlockerEngine : IAsyncDisposable
             return;
         }
 
-        var result = ProcessKiller.TerminateProcess(e.ProcessId, e.ProcessName);
-        ProcessBlocked?.Invoke(this, new ProcessBlockedEventArgs
-        {
-            ProcessId = e.ProcessId,
-            ProcessName = e.ProcessName,
-            Result = result
-        });
+        HandleProcessTermination(e.ProcessId, e.ProcessName);
     }
 
     public async ValueTask DisposeAsync()
@@ -109,6 +115,35 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         LockStateChanged?.Invoke(this, new LockStateChangedEventArgs(state.Clone()));
     }
+
+    private int TerminateExistingBlockedProcesses()
+    {
+        if (_config == null)
+        {
+            return 0;
+        }
+
+        var targets = _config.EnabledProcessNames.ToList();
+        if (targets.Count == 0)
+        {
+            return 0;
+        }
+
+        return ProcessTerminator.TerminateExistingProcesses(targets, HandleProcessTermination);
+    }
+
+    private ProcessTerminationResult HandleProcessTermination(int processId, string processName)
+    {
+        var result = ProcessKiller.TerminateProcess(processId, processName);
+        ProcessBlocked?.Invoke(this, new ProcessBlockedEventArgs
+        {
+            ProcessId = processId,
+            ProcessName = processName,
+            Result = result
+        });
+
+        return result;
+    }
 }
 
 public class LockStateChangedEventArgs : EventArgs
@@ -119,4 +154,17 @@ public class LockStateChangedEventArgs : EventArgs
     }
 
     public LockState State { get; }
+}
+
+public class PreExistingProcessesTerminatedEventArgs : EventArgs
+{
+    public PreExistingProcessesTerminatedEventArgs(LockType type, int terminatedCount)
+    {
+        LockType = type;
+        TerminatedCount = terminatedCount;
+    }
+
+    public LockType LockType { get; }
+
+    public int TerminatedCount { get; }
 }
