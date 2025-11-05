@@ -159,6 +159,12 @@ Timeline: flexible student schedule.
 
 **Deliverables**: one-click installer, optional auto-start, update notifications, antivirus-friendly package.
 
+### 1.5 Pre-existing Process Termination (1 day)
+
+- **Description:** On lock activation (T0), scan running processes and terminate any that match enabled blocked apps/games (parent + child processes). Applies to both soft and hard locks.
+- **Deliverables:** Engine hook on `CreateLock()` to trigger termination; UI toast (“Closed X apps to enforce your lock”); Activity feed entry per terminated process.
+- **Acceptance:** If Steam/Riot are open at T0, they close within ≤1s; re-launch attempts remain blocked for the lock duration.
+
 **Phase 1 Success Criteria**
 
 - User can install and use the UI without the console
@@ -173,6 +179,7 @@ Timeline: flexible student schedule.
 - Blocked app list: add/remove/toggle; immediate effect without restart.
 - CPU idle < 1%; working set < 100 MB while idle; no unhandled exceptions in session logs.
 - MSIX build artifact produced; install/uninstall succeeds on clean VM.
+- Pre-existing blocked apps are terminated at lock start (≤1s); re-launch attempts remain blocked.
 
 ## Phase 2: Windows Service & Persistence
 
