@@ -111,6 +111,9 @@
   <PropertyGroup>
     <DesktopRuntimeIdentifier>win-x64</DesktopRuntimeIdentifier>
     <DesktopProjectExtensionsPath>$(MSBuildThisFileDirectory)..\src\Cooldown.Desktop\obj\wappublish\$(DesktopRuntimeIdentifier)\</DesktopProjectExtensionsPath>
+    <RuntimeIdentifier>$(DesktopRuntimeIdentifier)</RuntimeIdentifier>
+    <RuntimeIdentifiers>$(DesktopRuntimeIdentifier)</RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
   </PropertyGroup>
   <Target Name="RestoreEntryPointProject" BeforeTargets="PrepareForBuild">
     <MSBuild Projects="@(ProjectReference)"
