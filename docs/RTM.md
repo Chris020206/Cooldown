@@ -4,7 +4,7 @@
 | Business Goal | Requirement ID | WBS Task(s) | Test Case / Acceptance | Metric |
 | --- | --- | --- | --- | --- |
 | Reduce impulsive gaming | R1 / FR1 Lock creation | Phase 1.2 Dashboard | Create soft/hard lock; countdown ±1s | Activation ≥50% |
-| Enforce blocks reliably | R2 / FR2 Enforcement | Phase 0 PoC; Phase 2.4 | Detect & kill <1s; child processes exit | Avg locks/week ≥10 |
+| Enforce blocks reliably | R2 / FR2 Enforcement | Phase 0 PoC; Phase 1.5; Phase 2.4 | Detect & kill <1s; child processes exit. Also terminates already-running targets at T0 (≤1s). | Avg locks/week ≥10 |
 | Survive restarts | R3 / FR4 Persistence | Phase 2.1–2.3 | Reboot resumes lock; UI reconnect ≤2s | Crash rate <5% |
 | Safety valve | R4 / FR5 Emergency unlock | Phase 2.5 | 60s timer; reason captured; event logged | Emergency unlocks trend ↓ |
 | Insight & value | R5 / FR6 Stats | Phase 4.1 | Local counters visible | Trial → Paid ≥20–30% |
