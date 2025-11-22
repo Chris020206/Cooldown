@@ -1,0 +1,2 @@
+MainPackage=C:\Users\coffe\source\repos\Chris020206\Cooldown\src\Cooldown.Desktop.Package\bin\x64\Release\Cooldown.Desktop.Package_0.2.1.0_x64.msix
+SymbolPackage=C:\Users\coffe\source\repos\Chris020206\Cooldown\src\Cooldown.Desktop.Package\obj\x64\Release\Symbols\Cooldown.Desktop.Package_0.2.1.0_x64.appxsym
