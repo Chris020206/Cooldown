@@ -6,7 +6,7 @@ Windows desktop app that **removes the decision to play** during focus periods b
 
 ## 2. Functional Requirements (MVP)
 - **FR1 — Lock creation**: Soft/hard locks; presets (5/15/30/60/120/240) + custom minutes.
-- **FR2 — Enforcement**: Detect & terminate targeted processes (parents + children) in <1s, including **already-running processes at lock activation (T0)**, and prevent re-launch for the lock duration.
+- **FR2 — Enforcement**: Detect & terminate targeted processes (parents + children) in <1s.
 - **FR3 — Catalog**: Manage blocked apps (add/remove/toggle) with immediate effect.
 - **FR4 — Persistence**: Windows Service (SYSTEM). Locks survive reboot; secure named pipes.
 - **FR5 — Emergency unlock**: 60s friction timer + reason text → log locally.
