@@ -108,10 +108,14 @@
     <Content Include="Images\StoreLogo.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
+  <PropertyGroup>
+    <DesktopRuntimeIdentifier>win-x64</DesktopRuntimeIdentifier>
+    <DesktopProjectExtensionsPath>$(MSBuildThisFileDirectory)..\src\Cooldown.Desktop\obj\wappublish\$(DesktopRuntimeIdentifier)\</DesktopProjectExtensionsPath>
+  </PropertyGroup>
   <Target Name="RestoreEntryPointProject" BeforeTargets="PrepareForBuild">
     <MSBuild Projects="@(ProjectReference)"
              Targets="Restore"
-             Properties="RuntimeIdentifier=win-x64"
+             Properties="RuntimeIdentifier=$(DesktopRuntimeIdentifier);MSBuildProjectExtensionsPath=$(DesktopProjectExtensionsPath)"
              BuildInParallel="true" />
   </Target>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
