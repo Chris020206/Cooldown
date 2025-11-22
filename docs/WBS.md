@@ -159,6 +159,12 @@ Timeline: flexible student schedule.
 
 **Deliverables**: one-click installer, optional auto-start, update notifications, antivirus-friendly package.
 
+### 1.5 Pre-existing Process Termination (1 day)
+
+- **Description:** On lock activation (T0), scan running processes and terminate any that match enabled blocked apps/games (parent + child processes). Applies to both soft and hard locks.
+- **Deliverables:** Engine hook on `CreateLock()` to trigger termination; UI toast (“Closed X apps to enforce your lock”); Activity feed entry per terminated process.
+- **Acceptance:** If Steam/Riot are open at T0, they close within ≤1s; re-launch attempts remain blocked for the lock duration.
+
 **Phase 1 Success Criteria**
 
 - User can install and use the UI without the console
@@ -173,6 +179,7 @@ Timeline: flexible student schedule.
 - Blocked app list: add/remove/toggle; immediate effect without restart.
 - CPU idle < 1%; working set < 100 MB while idle; no unhandled exceptions in session logs.
 - MSIX build artifact produced; install/uninstall succeeds on clean VM.
+- Pre-existing blocked apps are terminated at lock start (≤1s); re-launch attempts remain blocked.
 
 ## Phase 2: Windows Service & Persistence
 
@@ -284,6 +291,21 @@ Goal: deliver a production-quality experience.
 
 - CPU <1%, memory <100 MB, fast detection, responsive UI
 
+### 4.x Localization Preparation (1–2 days)
+
+- **Description:** Establish groundwork for future multi-language support by centralizing UI strings and adopting a resource-based structure.
+- **Deliverables:** 
+  - Extract all user-visible UI text into `.resx` resource files.
+  - Replace hardcoded strings with `DynamicResource` or binding to resource keys.
+  - Add initial English resource dictionary as default culture.
+  - Support safe fallback behavior for missing keys.
+  - Document localization strategy for Phase 5+.
+- **Out of Scope:** Full translation into additional languages (Phase 5+).
+- **Acceptance Criteria:** 
+  - All UI text loads from resource files.
+  - Adding a new language requires only creating `<language>.resx` dictionary files.
+  - The application runs correctly even if alternate language files are absent.
+
 ### 4.5 Testing & QA (3–4 days)
 
 - Manual end-to-end QA, edge case testing, bug triage, issue documentation
@@ -307,6 +329,7 @@ Goal: deliver a production-quality experience.
 - Crash rate <5% across QA matrix (see Appendix F); Sentry capturing unhandled exceptions.
 - Privacy Policy, Terms, Refund Policy published; in-app links reachable.
 - Landing page collects ≥25 qualified beta signups; UTM tracked; Plausible configured.
+- All UI strings centralized via resource dictionaries; English is default; app is localization-ready for Phase 5+ translations.
 
 ## Phase 5: Post-MVP Features (Backlog)
 
