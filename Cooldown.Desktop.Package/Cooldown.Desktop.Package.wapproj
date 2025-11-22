@@ -60,7 +60,6 @@
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
-    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
   </PropertyGroup>
@@ -108,6 +107,18 @@
     <Content Include="Images\StoreLogo.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
+  <PropertyGroup>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>$(RuntimeIdentifier)</RuntimeIdentifiers>
+    <SelfContained>true</SelfContained>
+    <MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)..\src\Cooldown.Desktop\obj\wappublish\$(RuntimeIdentifier)\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  <Target Name="RestoreEntryPointProject" BeforeTargets="PrepareForBuild">
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="Restore"
+             Properties="RuntimeIdentifier=$(RuntimeIdentifier);MSBuildProjectExtensionsPath=$(MSBuildProjectExtensionsPath);SelfContained=$(SelfContained)"
+             BuildInParallel="true" />
+  </Target>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" PrivateAssets="all" />
