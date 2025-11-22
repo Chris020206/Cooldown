@@ -8,7 +8,8 @@
 
 ## Scope
 Validate full implementation of **Phase 1 (1.0 → 1.5)** deliverables:
-Core Framework → Lock Manager → Process Monitor → Desktop UI → Installer → Pre-existing Process Termination.
+Core Framework → Lock Manager → Process Monitor → Desktop UI → Installer → Pre-existing Process Termination.  
+This test also identifies any non-critical issues to be deferred to Phase 2.
 
 ---
 
@@ -33,14 +34,15 @@ Core Framework → Lock Manager → Process Monitor → Desktop UI → Installer
 | T15 | 1.5 | Re-launch Prevention | Try to open Steam during lock | Process immediately killed; new log entry |  |  |
 | T16 | All | Performance | Monitor CPU usage during active lock | Idle CPU < 1 % |  |  |
 | T17 | All | Stability / Crash Recovery | Force-close desktop app → reopen | Lock state restores correctly from config |  |  |
+| T18 | 1.3 | Duration Selection Logic | Switch between preset durations and custom minutes | Selected preset applies unless custom explicitly chosen |  |  |
 
 ---
 
 ## Summary Results
-**Total tests:** 17  
-**Passed:**    
-**Failed:**    
-**Pending issues:**    
+**Total tests:** 18  
+**Passed:**  
+**Failed:**  
+**Deferred to Phase 2:**  
 
 ---
 
@@ -58,7 +60,13 @@ Core Framework → Lock Manager → Process Monitor → Desktop UI → Installer
 - Installer/MSIX build installs and runs successfully.  
 - Activity logging and UI updates operate per spec.  
 - CPU usage idle < 1 %.  
-- All Phase 1 deliverables verified functional.
+- Duration-selection behavior requires refinement (see Known Issues).  
+
+---
+
+## Known Issues (Deferred to Phase 2)
+- **KI-01 – Preset vs Custom Duration Ambiguity:** Custom time input overrides presets without explicit toggle. Will be solved in Phase 2 via “Use custom time” checkbox and disabled preset controls.
+- Additional issues discovered during testing will be added here.
 
 ---
 
