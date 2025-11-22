@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net8.0-windows</TargetFramework>
@@ -9,6 +9,7 @@
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishReadyToRun>false</PublishReadyToRun>
 		<PublishTrimmed>false</PublishTrimmed>
+		<Platforms>AnyCPU;x64</Platforms>
 	</PropertyGroup>
 	<ItemGroup>
 		<ProjectReference Include="$(RepoRoot)src/Cooldown.Blocker.Core/Cooldown.Blocker.Core.csproj" />
