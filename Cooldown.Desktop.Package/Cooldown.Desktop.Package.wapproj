@@ -108,6 +108,12 @@
     <Content Include="Images\StoreLogo.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
+  <Target Name="RestoreEntryPointProject" BeforeTargets="PrepareForBuild">
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="Restore"
+             Properties="RuntimeIdentifier=win-x64"
+             BuildInParallel="true" />
+  </Target>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" PrivateAssets="all" />
