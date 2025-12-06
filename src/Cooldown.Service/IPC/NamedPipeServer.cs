@@ -83,8 +83,15 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
                 _logger.LogError(_acceptTask.Exception, "Pipe accept task faulted; restarting listener.");
             }
 
+            var wasConnected = _server?.IsConnected == true;
             _acceptTask = null;
-            if (_server.IsConnected == false)
+            if (wasConnected && _clientLoopTask == null && _server != null)
+            {
+                InitializeClientStreams();
+                _clientLoopTask = RunClientLoopAsync(_server, _reader!, _writer!, cancellationToken);
+                _logger.LogInformation("Named pipe client connected.");
+            }
+            else if (_server is { IsConnected: false })
             {
                 await BeginAcceptAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -126,13 +133,13 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             _acceptTask = WaitForConnectionAsyncSafe(_server, cancellationToken);
         }
 
-        if (_acceptTask.IsCompletedSuccessfully)
-        {
-            _acceptTask = null;
-            InitializeClientStreams();
-            _clientLoopTask = RunClientLoopAsync(_server, _reader!, _writer!, cancellationToken);
-            _logger.LogInformation("Named pipe client connected.");
-        }
+            if (_acceptTask.IsCompletedSuccessfully)
+            {
+                _acceptTask = null;
+                InitializeClientStreams();
+                _clientLoopTask = RunClientLoopAsync(_server, _reader!, _writer!, cancellationToken);
+                _logger.LogInformation("Named pipe client connected.");
+            }
 
         return Task.CompletedTask;
     }
@@ -197,6 +204,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
                     continue;
                 }
 
+                _logger.LogInformation("Received IPC command {Command}.", envelope.Command);
                 await HandleEnvelopeAsync(envelope, writer, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -257,6 +265,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
     private object BuildPingResponse()
     {
         var uptimeSeconds = (int)(DateTimeOffset.UtcNow - _serviceStart).TotalSeconds;
+        _logger.LogInformation("Responding to Service.Ping (uptimeSeconds={UptimeSeconds}).", uptimeSeconds);
         return new CommandResponse
         {
             Success = true,

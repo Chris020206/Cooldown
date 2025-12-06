@@ -283,6 +283,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine("PingServiceAsync invoked.");
             var response = await _ipcClient.SendCommandAsync<object, PingResponsePayload>(
                 "Service.Ping",
                 new { clientVersion = "0.2.1-desktop" },
