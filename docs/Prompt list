@@ -1,0 +1,208 @@
+🌋 PHASE 0 — PoC (Already Done, for Reference)
+
+P0-01 – Create Console PoC Blocker Engine
+
+P0-02 – Implement Soft/Hard Lock Logic in Console
+
+P0-03 – Implement Process Monitoring & Tree Kill in Console
+
+P0-04 – Add Basic Config & Blocked App List in Console
+
+🎮 PHASE 1 — Desktop Application Foundation
+1.1 UI Framework Setup
+
+P1.1-01 – Create WPF Shell Project with MVVM Structure
+
+P1.1-02 – Add System Tray Integration & Start-Minimized Behavior
+
+P1.1-03 – Apply Initial Gaming-Themed UI Styling (Dark Theme)
+
+P1.1-04 – Setup Dependency Injection & Shared Services for Desktop
+
+1.2 Core UI Screens
+
+P1.2-01 – Implement Lock Control Dashboard View + ViewModel
+
+P1.2-02 – Implement App Selection Screen (Blocked App Management)
+
+P1.2-03 – Implement Settings Screen (General + Lock Preferences)
+
+P1.2-04 – Implement Basic Stats Dashboard (Locks + Time Saved)
+
+1.3 UI ↔ PoC / Core Integration
+
+P1.3-01 – Extract Blocking Engine into Cooldown.Blocker.Core
+
+P1.3-02 – Wire Desktop UI to Blocking Engine (Start/Cancel Lock)
+
+P1.3-03 – Implement Real-Time Lock Status & Activity Feed Binding
+
+P1.3-04 – Handle Errors Gracefully in Desktop (Engine Failures)
+
+1.4 Installer & Distribution
+
+P1.4-01 – Create MSIX Packaging Project for Desktop App
+
+P1.4-02 – Configure MSIX Install/Uninstall & AppData Paths
+
+P1.4-03 – Add Start-on-Boot Option & Respect User Preference
+
+P1.4-04 – Add VS Launch Profiles for Desktop + Packaging
+
+1.X – Phase 1 Support / DX
+
+P1.X-01 – Add Basic Logging from Desktop to File/Console
+
+P1.X-02 – Add Test Hooks for Phase 1 Final Verification (T1–T18)
+
+🛡️ PHASE 2 — Windows Service & Persistence (Current Focus)
+2.1 Windows Service Development (Core Service Layer)
+
+P2.1-01 – Create Cooldown.Service Project (Worker + ServiceBase Hybrid)
+➡️ This is the prompt we just created.
+
+P2.1-02 – Implement BlockingServiceWorker Heartbeat & DI Setup
+
+P2.1-03 – Implement In-Memory ILockStateManager in Service
+
+P2.1-04 – Integrate Cooldown.Blocker.Core into Service Skeleton (No IPC Yet)
+
+2.2 Inter-Process Communication (IPC: Desktop ↔ Service)
+
+P2.2-01 – Design IPC Contract (Named Pipe Message Schema & Commands)
+
+P2.2-02 – Implement Named Pipe Server in Cooldown.Service
+
+P2.2-03 – Implement Named Pipe Client in Cooldown.Desktop
+
+P2.2-04 – Wire Lock Commands over IPC (Create Lock / Cancel Lock / Update Blocked Apps)
+
+P2.2-05 – Wire Lock State Push from Service to Desktop (LockStatusChanged Events)
+
+2.3 State Persistence (SQLite / Lock & Config Persistence)
+
+P2.3-01 – Add SQLite Support & Schema for Lock State + Settings
+
+P2.3-02 – Implement Persistent ILockStateManager (SQLite-backed)
+
+P2.3-03 – Implement Startup Rehydration of Lock State (Resolve D2-01)
+
+P2.3-04 – Add Migration/Versioning for Persistence Layer
+
+2.4 Enhanced Blocking Logic (Dependent Processes & Pre-existing Apps)
+
+P2.4-01 – Implement Process Mapping Model (Game ↔ Launcher Dependencies)
+
+P2.4-02 – Implement Hierarchical Blocking Rules (Resolve D2-05)
+
+P2.4-03 – Improve Pre-Existing Process Kill at Lock Start (Resolve D2-06)
+
+P2.4-04 – Add Logging for Process Mapping / Edge Cases
+
+2.5 UX & Behavior Rules (DX-ID UX Fixes)
+
+P2.5-01 – Redesign Duration Selection Logic in UI (Resolve D2-02)
+
+P2.5-02 – Add Confirmation Dialog When Lock Already Active (Resolve D2-04)
+
+P2.5-03 – Define & Implement UX Rules for Toggling Apps During Active Lock (Resolve D2-07)
+
+P2.5-04 – Add Desktop Activity Messages for Lock Canceled / Lock Expired (Resolve D2-03)
+
+2.6 Packaging & Branding (Service & Identity)
+
+P2.6-01 – Update MSIX Identity from GUID to Branded Name (Resolve D2-08)
+
+P2.6-02 – Ensure Service + Desktop Are Correctly Installed with MSIX
+
+P2.6-03 – Document Service Install/Uninstall Procedure
+
+2.7 Tamper Resistance & Emergency Unlock (Core Phase 2 Goals)
+
+P2.7-01 – Implement Basic Tamper Detection (Service Missing/Stopped)
+
+P2.7-02 – Implement Emergency Unlock Path with Friction Timer
+
+P2.7-03 – Log Emergency Unlock as Relapse Event in SQLite
+
+🧩 PHASE 3 — Backend API & Authentication
+
+P3.1-01 – Scaffold FastAPI Backend with Postgres & Migrations
+
+P3.1-02 – Implement User/Auth Models & JWT System
+
+P3.1-03 – Implement Device Registration & Limits
+
+P3.1-04 – Integrate Stripe Checkout & Webhooks
+
+P3.1-05 – Implement Desktop Login & Token Storage
+
+P3.1-06 – Wire Subscription/Entitlement Checks in Desktop & Service
+
+🎨 PHASE 4 — MVP Polish & Beta Launch (UX/UI & Stability)
+
+P4.1-01 – Implement Stats Dashboard Backed by SQLite Data
+
+P4.1-02 – Implement Onboarding Wizard & First-Time UX
+
+P4.1-03 – Add Global Error Handling & User-Friendly Error Screens
+
+P4.1-04 – Optimize UI Performance (Rendering, Startup Time)
+
+P4.1-05 – Apply Final UI/UX Polish (Visual Hierarchy, Spacing, Micro-Interactions)
+
+P4.1-06 – Implement Crash Reporting (Sentry) Integration
+
+P4.1-07 – Connect Legal/Privacy Screens & External Policy Links
+
+P4.1-08 – Implement and Polish Landing Page + Beta Signup Flow
+
+📈 PHASE 5 — Post-MVP Features
+
+P5.1-01 – Implement Earned Credits System
+
+P5.1-02 – Implement Streaks & Achievements
+
+P5.1-03 – Implement Scheduled Recurring Locks
+
+P5.1-04 – Implement Weekly Email Summaries
+
+P5.1-05 – Implement Relapse Handling UX (Reflection Prompts, Suggestions)
+
+P5.1-06 – Implement Browser Extension Integration
+
+P5.1-07 – Implement Parental Mode
+
+P5.1-08 – Implement Mobile Companion App (Scaffold + API Integration)
+
+P5.1-09 – Implement Health/Fitness Integrations
+
+P5.1-10 – Implement Community Features (Accountability, Leaderboards)
+
+🧬 PHASE 6 — Multi-Brand Strategy
+
+P6.1-01 – Duplicate Core Codebase into Productivity-Focused Brand
+
+P6.1-02 – Implement Branding Toggle/Configuration
+
+P6.1-03 – Evaluate Pricing/Bundling Logic for Multi-Brand Setup
+
+📚 META / QA / DOCS / PIPELINE
+
+These aren’t “app code” phases, but they’re crucial prompts that support the structure:
+
+M1-01 – Generate Phase 1 Final Test Report Template (T1–T18)
+
+M1-02 – Generate Phase 2 Test Matrix & Verification Plan
+
+M1-03 – Maintain WBS.md with DX-ID Integration
+
+M1-04 – Maintain RTM.md (Enterprise, DX-ID Linked)
+
+M1-05 – Maintain CHANGELOG.md with DX-ID Resolution Entries
+
+M1-06 – Generate GitHub Issues from DX-IDs (D2-01 → D2-08)
+
+M1-07 – Create CI/CD Setup for Desktop + Service + Backend
+
+M1-08 – Generate Dev Onboarding Documentation (README, ARCHITECTURE.md)
