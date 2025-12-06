@@ -1,7 +1,7 @@
 # Phase 1 Final Verification – v0.2.1
 
-**Date:** 2025-11-05  
-**Tester:** <your name>  
+**Date:** 2025-12-06  
+**Tester:** C.J.  
 **Build:** Cooldown.GG v0.2.1 (Release – Phase 1 Completion)  
 
 ---
@@ -17,7 +17,7 @@ This test also identifies any non-critical issues to be deferred to Phase 2.
 
 | ID | WBS Ref | Feature / Subsystem | Scenario | Expected Result | Actual Result | Pass/Fail |
 |:--|:--|:--|:--|:--|:--|:--|
-| T1 | 1.0 | Core Framework Setup | Clean clone → Build solution | Solution builds with 0 errors; shared core compiles under .NET 8 |  |  |
+| T1 | 1.0 | Core Framework Setup | Clean clone → Build solution | Solution builds with 0 errors; shared core compiles under .NET 8 | Target framework .NET 8, Solution build 3 succeeded | Pass |
 | T2 | 1.0 | Config Persistence | Edit blocked-apps list → Restart app | Changes persist across sessions (JSON config load/save verified) |  |  |
 | T3 | 1.1 | Lock Manager – Soft Lock | Activate 15 min soft lock | Lock activates; cancel available; timer ticks 1 s intervals |  |  |
 | T4 | 1.1 | Lock Manager – Hard Lock | Activate hard lock | Cancel button disabled; UI shows remaining time |  |  |
