@@ -198,7 +198,6 @@ Requires UX decision: warning popup vs keeping instantaneous logic.
 **Dependencies:** UI–LockManager communication pattern.
 
 ---
-
 ### **D2-08 — MSIX Package Identity Still GUID-Based**
 **Category:** Packaging / Branding  
 **Description:**  
@@ -208,6 +207,7 @@ The MSIX Identity uses a GUID instead of a branded name. Task Manager and Window
 Branding overhaul belongs in Phase 2’s distribution and packaging work.  
 **Target Phase:** Phase 2  
 **Dependencies:** Package.appxmanifest update, certificate signing.
+
 
 ---
 
