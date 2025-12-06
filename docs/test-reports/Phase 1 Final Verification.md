@@ -57,12 +57,34 @@ This test also identifies any non-critical issues to be deferred to Phase 2.
 ## Observations & Notes
 # Issues reported that are NOT failures but must be logged for Phase 2
 These are not part of Phase-1 functional requirements but are improvements, UX refinements, or tighter behavior control for Phase-2.
+
 A. Missing Activity Log Entries (Phase-2 Logging Enhancements)
 1. No Activity message when a soft lock is canceled
 → Should appear: “Soft lock canceled.”
 2. No message when a lock expires
 → Should appear: “Lock expired at HH:MM.”
 
+B. Lock Interaction & UX Issues
+3. Starting a new lock while one is active immediately restarts the lock
+→ Should show confirmation dialog:
+“A lock is already active. Start a new one?”
+
+4. Duration selection ambiguity
+- Custom input overrides presets silently
+- Needs a “Use custom duration” toggle
+- Presets should auto-disable when custom is active
+
+C. Blocked Applications Logic Issues
+These were discovered organically through use, not through formal tests — but extremely important:
+5. League of Legends is not blocked unless RiotClientServices is checked
+- This means nested launcher processes are not fully resolved
+- Phase-2 should include multi-process block mapping
+6. At lock creation, League is NOT terminated if only League is checked
+- This is a misalignment with pre-existing process termination logic
+7. If user checks a blocked application while a lock is already active → the app is instantly killed
+- This is technically correct but may need UX adjustment or confirmation
+
+- 
 - Verified `App.xaml.cs` fix (`App : System.Windows.Application`) resolves build errors.  
 - Termination at T0 confirmed within ≤1 s for Steam and Riot.  
 - Installer/MSIX build installs and runs successfully.  
