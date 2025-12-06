@@ -340,17 +340,65 @@ Goal: deliver a production-quality experience.
 
 - Gaming-focused marketing site with SEO, Stripe checkout links, analytics
 
+## 4.8 UI/UX Polish & Interaction Refinement (High Priority)
+
+- Refine visual hierarchy (colors, padding, contrast, typography)
+
+- Add animations/micro-interactions
+
+- Improve lock creation flow clarity
+
+- Improve empty-state and error-state UX
+
+- Better blocked-app list organization
+
+- Improve tray UX
+
+- Add first-load onboarding
+
+- Standardize button styles / spacing
+
+- Create consistent notification patterns
+  
+
 **Phase 4 Success Criteria**
 
-- Polished app with smooth onboarding and minimal bugs
-- Legal foundations established
-- Marketing site ready for beta sign-ups
+- The application delivers a polished, coherent, professional **UX/UI** suitable for beta use.
+- Visual design is consistent across all screens (color system, spacing, typography, iconography).
+- User onboarding is smooth, clear, and results in successful first lock creation for non-technical users.
+- Interaction flows (lock creation, app selection, settings) are intuitive with no dead-ends or confusing behavior.
+- Error states, empty states, and loading states are visually clear and help guide the user.
+- Micro-interactions (animations, hover states, toasts, timers) feel responsive and modern.
+- Privacy, policy, and account-related screens feel trustworthy and professional.
+- The desktop app demonstrates high stability with no critical UI freezes or broken interactions.
+- Marketing site, branding, and in-app UI feel unified and aligned.
 
 **Phase 4 Acceptance Criteria**
-- Onboarding wizard completes <2 minutes; first lock created successfully by ≥95% test users.
-- Crash rate <5% across QA matrix (see Appendix F); Sentry capturing unhandled exceptions.
-- Privacy Policy, Terms, Refund Policy published; in-app links reachable.
-- Landing page collects ≥25 qualified beta signups; UTM tracked; Plausible configured.
+
+- **Onboarding UX:** First-time onboarding wizard completes in <2 minutes and at least 95% of test users can create their first lock without external guidance.
+- **UI Consistency:** All screens follow a unified visual style guide (colors, typography, spacing, margins, shadows, iconography).
+- **Interaction Quality:** Buttons, toggles, lists, and popups behave consistently (hover states, disabled states, transitions).
+- **Lock Creation Experience:** Lock selection (preset/custom), confirmation dialogs, countdown display, and visual feedback meet clarity standards validated in user tests.
+- **App Selection UX:** Blocked application list supports smooth toggling, predictable behavior, proper empty-state messaging, and polished icons.
+- **Notifications & Toasts:** Toast messages are visually consistent, positioned predictably, and provide actionable clarity.
+- **Error & Empty States:**  
+  - All screens have error states with user-friendly messaging.  
+  - Empty dashboards (no locks created, no blocked apps, etc.) guide the user clearly toward next actions.
+- **Performance:**  
+  - UI response time <150ms for button interactions.  
+  - Soft/hard lock initiation reflects visually within ≤1s.  
+  - Main window opens within ≤1.5s on cold start.
+- **Stability:**  
+  - Crash rate <5% across full QA matrix (Appendix F).  
+  - No UI-breaking exceptions during typical workflows.
+- **Compliance:**  
+  - Privacy Policy, Terms of Service, and Refund Policy accessible and correctly linked from the app.  
+  - Visual layout supports GDPR clarity and readability.
+- **Branding:**  
+  - App, installer, and website share unified branding identity (logo, palette, product name).
+- **Beta Readiness:**  
+  - Landing page collects ≥25 qualified signups using updated UI branding.  
+  - ≥80% of testers rate usability as “good” or better in closed beta survey.
 
 ## Phase 5: Post-MVP Features (Backlog)
 
