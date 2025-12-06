@@ -75,6 +75,7 @@ B. Lock Interaction & UX Issues
 - Presets should auto-disable when custom is active
 
 C. Blocked Applications Logic Issues
+
 These were discovered organically through use, not through formal tests — but extremely important:
 5. League of Legends is not blocked unless RiotClientServices is checked
 - This means nested launcher processes are not fully resolved
