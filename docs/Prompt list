@@ -59,7 +59,6 @@ P1.X-02 – Add Test Hooks for Phase 1 Final Verification (T1–T18)
 2.1 Windows Service Development (Core Service Layer)
 
 P2.1-01 – Create Cooldown.Service Project (Worker + ServiceBase Hybrid)
-➡️ This is the prompt we just created.
 
 P2.1-02 – Implement BlockingServiceWorker Heartbeat & DI Setup
 
