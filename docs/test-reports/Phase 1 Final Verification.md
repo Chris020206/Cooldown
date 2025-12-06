@@ -84,7 +84,27 @@ These were discovered organically through use, not through formal tests — but 
 7. If user checks a blocked application while a lock is already active → the app is instantly killed
 - This is technically correct but may need UX adjustment or confirmation
 
-- 
+# Behavioral Notes (Not necessarily bugs, but must be remembered)
+- Lack of “Lock Expired” message (noted)
+- Lack of “Soft Lock Canceled” message (noted)
+- Lack of confirmation when creating a lock while one is active (noted)
+- Riot/League process mapping inconsistencies (noted)
+- The immediate kill when checking a new app during lock (noted — may be intended or needs refinement)
+
+These are all earmarked for Phase 2: UX + Logic Hardening.
+
+# Structural insight during testing
+Key architectural observations:
+- LockManager persists some config but not lock state
+- Bootstrap initialization does not rehydrate lock state
+- Process killer works well during active lock, but pre-existing process termination is inconsistent depending on process hierarchy (Riot/League case)
+- CPU efficiency is excellent — foundation is strong
+- Blocked apps logic and event propagation are very good except for the few UX items you spotted
+- MSIX package identity name is still GUID-based (will be updated to branded identity in Phase 2)
+
+# Summary
+Cooldown Phase-1 is nearly complete, with strong performance and core locking functionality, but missing the critical feature of lock persistence across crashes, and needs several Phase-2 behavioral and UX refinements that you identified.
+
 - Verified `App.xaml.cs` fix (`App : System.Windows.Application`) resolves build errors.  
 - Termination at T0 confirmed within ≤1 s for Steam and Riot.  
 - Installer/MSIX build installs and runs successfully.  
