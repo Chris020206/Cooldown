@@ -54,11 +54,13 @@ public sealed class NamedPipeClient : INamedPipeClient
         catch (OperationCanceledException)
         {
             CleanupStreams();
+            Debug.WriteLine("NamedPipeClient: connect canceled.");
             return false;
         }
         catch (Exception ex) when (ex is IOException or TimeoutException)
         {
             CleanupStreams();
+            Debug.WriteLine($"NamedPipeClient: connect failed ({ex.Message}).");
             return false;
         }
     }
@@ -118,11 +120,11 @@ public sealed class NamedPipeClient : INamedPipeClient
             {
                 responseEnvelope = JsonSerializer.Deserialize<MessageEnvelope>(line, _serializerOptions);
             }
-            catch (JsonException ex)
+        catch (JsonException ex)
+        {
+            Debug.WriteLine($"Failed to deserialize response envelope: {ex.Message}");
+            return new CommandResponse<TResponse>
             {
-                Debug.WriteLine($"Failed to deserialize response envelope: {ex.Message}");
-                return new CommandResponse<TResponse>
-                {
                     Success = false,
                     Error = new ErrorPayload
                     {
@@ -170,6 +172,7 @@ public sealed class NamedPipeClient : INamedPipeClient
         }
         catch (OperationCanceledException)
         {
+            Debug.WriteLine("NamedPipeClient: send canceled.");
             return new CommandResponse<TResponse>
             {
                 Success = false,
@@ -180,9 +183,10 @@ public sealed class NamedPipeClient : INamedPipeClient
                 }
             };
         }
-        catch (IOException)
+        catch (IOException ex)
         {
             CleanupStreams();
+            Debug.WriteLine($"NamedPipeClient: I/O error during send/receive ({ex.Message}).");
             return new CommandResponse<TResponse>
             {
                 Success = false,
