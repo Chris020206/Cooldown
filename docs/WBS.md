@@ -79,7 +79,7 @@ Estimated effort: 4–8 months at student pace, completing phases as time allows
 - ✅ Real-time process monitoring (<1-second detection)
 - ✅ Child process termination
 
-**Test Results**
+**Proof of Concept Test Results**
 
 - ✅ Steam blocked instantly (no visual window)
 - ✅ Riot Client blocked instantly
