@@ -1,16 +1,17 @@
 # Cooldown.gg Work Breakdown Structure (WBS)
 
-*Version: 1.1 — Last updated November 2, 2025*
+*Version: 1.2 — Last updated December 6, 2025*
 
-> **WBS Addendum (2025-11-02)**  
+> **WBS Addendum (2025-11-02, updated 2025-12-06)**  
 > This document now includes:  
 > (1) phase-level **acceptance criteria**,  
 > (2) a **security & tamper model** summary,  
 > (3) **privacy/GDPR** notes,  
 > (4) a **telemetry plan** tied to success metrics,  
 > (5) **release/rollback** guidance,  
-> (6) a compact **QA test matrix**, and  
-> (7) added **risks** & **marketing validation** activities.  
+> (6) a compact **QA test matrix**,  
+> (7) added **risks** & **marketing validation** activities, and  
+> (8) a **DX-ID deferred issues integration model** linking QA findings to future phases.  
 > These improve execution clarity and demonstrate Business Analyst rigor.
 
 The following WBS captures the phased development plan for turning the Cooldown.gg proof of concept into a production-ready desktop experience.
@@ -55,7 +56,7 @@ A Windows desktop application that blocks games and distracting apps during user
 | Phase | Goal | Deliverable | Status |
 | --- | --- | --- | --- |
 | Phase 0 | PoC validation | Working console blocker | ✅ Complete |
-| Phase 1 | Core desktop app | Installable app with UI | 🔄 Next |
+| Phase 1 | Core desktop app | Installable app with UI | 🔄 In progress (functional with deferred items) |
 | Phase 2 | Windows service + persistence | Production-grade blocking | ⏳ Pending |
 | Phase 3 | Backend + auth + billing | User accounts & subscriptions | ⏳ Pending |
 | Phase 4 | MVP polish | Beta-ready product | ⏳ Pending |
@@ -174,9 +175,52 @@ Timeline: flexible student schedule.
 - CPU idle < 1%; working set < 100 MB while idle; no unhandled exceptions in session logs.
 - MSIX build artifact produced; install/uninstall succeeds on clean VM.
 
+### Phase 1 Deferred Issues (DX-ID Integration)
+
+As of Phase 1 Final Verification (v0.2.1), the following issues were identified and formally deferred to Phase 2 using the DX-ID system. These items are **not** considered Phase 1 blockers but are required for Phase 2 logic/UX hardening and production readiness.
+
+> **Note:** DX-IDs originate in Phase 1 QA and are targeted for resolution in Phase 2. See the Phase 1 Test Report and DX-ID System Specification for full details.
+
+- **D2-01 — Missing Lock State Persistence and Crash Recovery**  
+  **Category:** Logic / Architecture  
+  Active locks do not persist across application crashes or forced closure. On restart, Cooldown loads in an unlocked state and no longer blocks applications. Requires LockManager state serialization and startup rehydration.
+
+- **D2-02 — Preset vs Custom Duration Ambiguity**  
+  **Category:** UX / UI Logic  
+  Custom duration silently overrides preset durations and there is no explicit way to revert to presets. Requires a clearer duration selection model (e.g., “Use custom duration” toggle and preset disabling rules).
+
+- **D2-03 — Missing Activity Messages for Cancellation and Expiration**  
+  **Category:** UX / Logging  
+  No Activity entries are logged when a soft lock is canceled or when a lock expires. Reduces transparency and debugging clarity. Requires ActivityFeed enhancements.
+
+- **D2-04 — Lock Restart Occurs Without Confirmation**  
+  **Category:** UX  
+  Starting a new lock while one is already active restarts the lock immediately without prompting. Requires confirmation dialog and safeguards to prevent accidental resets.
+
+- **D2-05 — Riot/League Process Mapping Inconsistency**  
+  **Category:** Process Detection / Logic  
+  League of Legends is not blocked unless RiotClientServices is manually selected. Selecting the game alone does not implicitly cover its launcher/underlying processes. Requires multi-process dependency mapping.
+
+- **D2-06 — Pre-existing League Client Not Terminated If Only “League” Is Selected**  
+  **Category:** Process Termination  
+  At lock activation, League is not terminated if only “League of Legends” is checked and Riot services are not. Requires improved process lineage detection and propagation rules.
+
+- **D2-07 — Adding a Blocked Application During Active Lock Instantly Terminates It (UX Review)**  
+  **Category:** UX / Behavior  
+  When a user checks a new blocked app during an active lock, the app is terminated immediately with no warning. Behavior is logically correct but may be too aggressive; requires UX decision (warning vs keep current behavior).
+
+- **D2-08 — MSIX Package Identity Still GUID-Based**  
+  **Category:** Packaging / Branding  
+  The MSIX Identity uses a GUID instead of a branded name, causing non-descriptive process naming in Task Manager/Windows. Cosmetic but important for professionalism; requires Package.appxmanifest update and future certificate alignment.
+
+These DX-IDs will be incorporated explicitly into **Phase 2 WBS**, **RTM**, and **CHANGELOG** as required work items.
+
 ## Phase 2: Windows Service & Persistence
 
 Goal: production-grade blocking that survives restarts and resists tampering.
+
+> **DX-ID Integration Note:**  
+> Phase 2 must address D2-01 through D2-08 as part of its implementation scope, particularly around persistence, process mapping, UX behavior, and packaging/branding.
 
 ### 2.1 Windows Service Development (4–5 days)
 
@@ -544,7 +588,7 @@ You have a roadmap, community, and tooling lined up—time to build Cooldown.gg.
 - Publish 1-page landing with email capture; 2 short videos (soft vs hard lock demos).
 - Recruit ≥25 beta testers (r/StopGaming/GameQuitters); run 5 user interviews.
 - Track signups and UTM in Plausible; convert 5 early testers to trial at MVP.
-*** End Patch
+
 ---
 
-*Version: 1.1 — Last updated November 2, 2025*
+*Version: 1.2 — Last updated December 6, 2025*
