@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsService>true</UseWindowsService>
+    <RootNamespace>Cooldown.Service</RootNamespace>
+    <AssemblyName>Cooldown.Service</AssemblyName>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\\Cooldown.Blocker.Core\\Cooldown.Blocker.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.EventLog" Version="8.0.0" />
+  </ItemGroup>
+
+  <!--
+    Usage notes (keep these commands in docs, not as XML-critical content):
+
+    Run in console mode for debugging (from repo root):
+      dotnet run &#45;&#45;project src/Cooldown.Service &#45;&#45; &#45;&#45;console
+
+    Install as Windows Service (admin, later when stable):
+      sc.exe create CooldownService binPath= "<path>\Cooldown.Service.exe" start= auto
+
+    Remove service:
+      sc.exe delete CooldownService
+  -->
+</Project>

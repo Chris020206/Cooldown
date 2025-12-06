@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using Cooldown.Desktop.Services;
+using Cooldown.Desktop.IPC;
 using Cooldown.Desktop.ViewModels;
 
 namespace Cooldown.Desktop.Views;
@@ -15,7 +16,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         var configService = new BlockerConfigService();
         var engineHost = new BlockerEngineHost();
-        _viewModel = new MainViewModel(configService, engineHost, Dispatcher);
+        var ipcClient = new NamedPipeClient();
+        _viewModel = new MainViewModel(configService, engineHost, ipcClient, Dispatcher);
         DataContext = _viewModel;
         _toastService = new ToastNotificationService();
         _viewModel.ToastRequested += OnToastRequested;
