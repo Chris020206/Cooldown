@@ -75,7 +75,6 @@ B. Lock Interaction & UX Issues
 - Presets should auto-disable when custom is active
 
 C. Blocked Applications Logic Issues
-
 These were discovered organically through use, not through formal tests — but extremely important:
 5. League of Legends is not blocked unless RiotClientServices is checked
 - This means nested launcher processes are not fully resolved
@@ -114,10 +113,101 @@ Cooldown Phase-1 is nearly complete, with strong performance and core locking fu
 - Duration-selection behavior requires refinement (see 'Known Issues').  
 
 ---
+## Deferred to Phase 2
 
-## Known Issues (Deferred to Phase 2)
-- **KI-01 – Preset vs Custom Duration Ambiguity:** Custom time input overrides presets without explicit toggle. Will be solved in Phase 2 via “Use custom time” checkbox and disabled preset controls.
-- Additional issues discovered during testing will be added here.
+### **D2-01 — Missing Lock State Persistence and Crash Recovery**
+**Category:** Logic / Architecture  
+**Description:**  
+Active locks do not persist across application crashes or forced closure. On restart, Cooldown loads in an unlocked state and no longer blocks applications.  
+**Impact:** High — Core functional gap.  
+**Reason for Deferral:**  
+Requires implementation of full LockManager state serialization and bootstrap rehydration. Too large to patch mid-phase; belongs in Phase 2’s logic hardening stage.  
+**Target Phase:** Phase 2  
+**Dependencies:** Config persistence rewrite, startup initialization routines.
+
+---
+
+### **D2-02 — Preset vs Custom Duration Ambiguity**
+**Category:** UX / UI Logic  
+**Description:**  
+Custom duration silently overrides preset durations without an explicit toggle. No clear way to revert to presets once custom is set.  
+**Impact:** Medium — Causes user uncertainty.  
+**Reason for Deferral:**  
+Requires additional UI controls (toggle or radio group) and conditional logic.  
+**Target Phase:** Phase 2  
+**Dependencies:** Lock duration selection redesign.
+
+---
+
+### **D2-03 — Missing Activity Messages for Cancellation and Expiration**
+**Category:** UX / Logging  
+**Description:**  
+No Activity entries are logged when a soft lock is canceled or when any lock (soft/hard) expires.  
+**Impact:** Low–Medium — Reduces transparency and debugging clarity.  
+**Reason for Deferral:**  
+Not blocking functionality; belongs in Phase 2 where logging system is expanded.  
+**Target Phase:** Phase 2  
+**Dependencies:** ActivityFeed service updates.
+
+---
+
+### **D2-04 — Lock Restart Occurs Without Confirmation**
+**Category:** UX  
+**Description:**  
+If a user starts a new lock while one is active, Cooldown restarts the lock immediately without prompting.  
+**Impact:** Medium — Can cause accidental lock resets.  
+**Reason for Deferral:**  
+Requires design of a confirmation dialog and cross-component event handling.  
+**Target Phase:** Phase 2  
+**Dependencies:** Dialog service, LockManager call guards.
+
+---
+
+### **D2-05 — Riot/League Process Mapping Inconsistency**
+**Category:** Process Detection / Logic  
+**Description:**  
+League of Legends is not blocked unless RiotClientServices is manually selected. This breaks expected behavior where selecting the game should implicitly include its launcher.  
+**Impact:** Medium — Allows bypass and weakens reliability.  
+**Reason for Deferral:**  
+Requires multi-process dependency mapping and hierarchical block list logic.  
+**Target Phase:** Phase 2  
+**Dependencies:** Process tree detection improvements.
+
+---
+
+### **D2-06 — Pre-existing League Client Not Terminated If Only “League” Is Selected**
+**Category:** Process Termination  
+**Description:**  
+At lock activation, League is not terminated if only “League of Legends” is checked and Riot services are not.  
+**Impact:** Medium — Breaks lock completeness and consistency.  
+**Reason for Deferral:**  
+Requires improved process lineage detection and rule-based block propagation.  
+**Target Phase:** Phase 2  
+**Dependencies:** Process monitor rewrite (hierarchical).
+
+---
+
+### **D2-07 — Adding a Blocked Application During Active Lock Instantly Terminates It**
+**Category:** UX / Behavior  
+**Description:**  
+If a user checks a new blocked application while a lock is already active, Cooldown immediately terminates the app without warning.  
+**Impact:** Low–Medium — Behavior is correct logically but may be too aggressive.  
+**Reason for Deferral:**  
+Requires UX decision: warning popup vs keeping instantaneous logic.  
+**Target Phase:** Phase 2  
+**Dependencies:** UI–LockManager communication pattern.
+
+---
+
+### **D2-08 — MSIX Package Identity Still GUID-Based**
+**Category:** Packaging / Branding  
+**Description:**  
+The MSIX Identity uses a GUID instead of a branded name. Task Manager and Windows UI show a non-descriptive identifier.  
+**Impact:** Low — Cosmetic but affects professionalism and user trust.  
+**Reason for Deferral:**  
+Branding overhaul belongs in Phase 2’s distribution and packaging work.  
+**Target Phase:** Phase 2  
+**Dependencies:** Package.appxmanifest update, certificate signing.
 
 ---
 
