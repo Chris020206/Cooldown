@@ -5,6 +5,7 @@ using System.Threading;
 using System.Windows.Threading;
 using Cooldown.Blocker.Core;
 using Cooldown.Desktop.Commands;
+using Cooldown.Desktop.IPC;
 using Cooldown.Desktop.Services;
 
 namespace Cooldown.Desktop.ViewModels;
@@ -14,6 +15,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private const int ActivityLogLimit = 50;
     private readonly BlockerConfigService _configService;
     private readonly BlockerEngineHost _engineHost;
+    private readonly INamedPipeClient _ipcClient;
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
     private readonly SemaphoreSlim _saveLock = new(1, 1);
@@ -24,15 +26,17 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private LockType _selectedLockType = LockType.Soft;
     private string _newAppName = string.Empty;
     private string _statusMessage = "Loading...";
+    private string _serviceStatus = "Service not checked.";
     private string? _errorMessage;
     private bool _isEngineRunning;
 
     public event EventHandler<ToastNotificationEventArgs>? ToastRequested;
 
-    public MainViewModel(BlockerConfigService configService, BlockerEngineHost engineHost, Dispatcher dispatcher)
+    public MainViewModel(BlockerConfigService configService, BlockerEngineHost engineHost, INamedPipeClient ipcClient, Dispatcher dispatcher)
     {
         _configService = configService;
         _engineHost = engineHost;
+        _ipcClient = ipcClient;
         _dispatcher = dispatcher;
         PresetDurations = new ObservableCollection<int>(new[] { 5, 15, 30, 60, 120, 240 });
         _selectedDuration = PresetDurations.First();
@@ -52,6 +56,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         AddBlockedAppCommand = new AsyncRelayCommand(_ => AddBlockedAppAsync());
         RemoveBlockedAppCommand = new AsyncRelayCommand(app => RemoveBlockedAppAsync(app as BlockedAppViewModel));
         SaveBlockedAppsCommand = new AsyncRelayCommand(_ => SaveConfigurationAsync());
+        PingServiceCommand = new AsyncRelayCommand(_ => PingServiceAsync());
 
         LockStatus.PropertyChanged += (_, _) => CancelLockCommand.RaiseCanExecuteChanged();
     }
@@ -75,6 +80,8 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand RemoveBlockedAppCommand { get; }
 
     public AsyncRelayCommand SaveBlockedAppsCommand { get; }
+
+    public AsyncRelayCommand PingServiceCommand { get; }
 
     public int SelectedDuration
     {
@@ -104,6 +111,12 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
+    }
+
+    public string ServiceStatus
+    {
+        get => _serviceStatus;
+        set => SetProperty(ref _serviceStatus, value);
     }
 
     public string? ErrorMessage
@@ -141,6 +154,9 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         UpdateLockState(_engineHost.GetStatus());
         StatusMessage = "Ready";
+
+        // Optionally attempt an initial ping to surface service availability.
+        await PingServiceAsync();
     }
 
     private void PopulateBlockedApps(BlockerConfig config)
@@ -263,6 +279,34 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task PingServiceAsync()
+    {
+        try
+        {
+            var response = await _ipcClient.SendCommandAsync<object, PingResponsePayload>(
+                "Service.Ping",
+                new { clientVersion = "0.2.1-desktop" },
+                CancellationToken.None);
+
+            if (response.Success && response.Result != null)
+            {
+                ServiceStatus = $"Service v{response.Result.ServiceVersion}, protocol {response.Result.ProtocolVersion}, uptime {response.Result.UptimeSeconds}s";
+            }
+            else if (response.Error != null)
+            {
+                ServiceStatus = $"Service error: {response.Error.Code} - {response.Error.Message}";
+            }
+            else
+            {
+                ServiceStatus = "Service ping returned an unknown response.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceStatus = $"Service unavailable ({ex.Message}).";
+        }
+    }
+
     private void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         _ = SaveConfigurationAsync();
@@ -362,6 +406,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
         await _engineHost.DisposeAsync();
         _saveLock.Dispose();
+        await _ipcClient.DisposeAsync();
     }
 
     private void OnPreExistingProcessesTerminated(object? sender, PreExistingProcessesTerminatedEventArgs e)
