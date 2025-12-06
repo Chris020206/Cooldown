@@ -257,7 +257,8 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             "Service.Ping" => BuildPingResponse(),
             "Lock.GetState" => await HandleLockGetStateAsync(cancellationToken).ConfigureAwait(false),
             "Lock.Cancel" => await HandleLockCancelAsync(cancellationToken).ConfigureAwait(false),
-            // TODO: implement Lock.Create and Apps.* commands in later steps.
+            "Lock.Create" => await HandleLockCreateAsync(envelope.Payload, cancellationToken).ConfigureAwait(false),
+            // TODO: Apps.* commands in later steps.
             _ => CommandResponse.FromError("NotImplemented", "Command not implemented in this phase.")
         };
     }
@@ -283,6 +284,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
         var current = await _lockStateManager.GetCurrentLockAsync(cancellationToken).ConfigureAwait(false);
         if (current == null)
         {
+            _logger.LogInformation("Lock.GetState: no active lock.");
             return new CommandResponse
             {
                 Success = true,
@@ -297,6 +299,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             remaining = TimeSpan.Zero;
         }
 
+        _logger.LogInformation("Lock.GetState: active lock type={Type}, remainingSeconds={Remaining}.", current.Type, (int)remaining.TotalSeconds);
         return new CommandResponse
         {
             Success = true,
@@ -322,6 +325,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
         var current = await _lockStateManager.GetCurrentLockAsync(cancellationToken).ConfigureAwait(false);
         if (current == null)
         {
+            _logger.LogInformation("Lock.Cancel: no active lock to cancel.");
             return new CommandResponse
             {
                 Success = true,
@@ -330,10 +334,68 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
         }
 
         await _lockStateManager.CancelLockAsync(cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("Lock.Cancel: canceled lock {LockId} type={Type}.", current.Id, current.Type);
         return new CommandResponse
         {
             Success = true,
             Result = new { canceled = true, previousLockId = current.Id }
+        };
+    }
+
+    private async Task<object> HandleLockCreateAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        LockCreateRequest? request;
+        try
+        {
+            request = payload.Deserialize<LockCreateRequest>(_serializerOptions);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Lock.Create: invalid payload.");
+            return CommandResponse.FromError("InvalidArguments", "Invalid payload for Lock.Create.");
+        }
+
+        if (request == null || request.DurationSeconds <= 0)
+        {
+            return CommandResponse.FromError("InvalidArguments", "DurationSeconds must be positive.");
+        }
+
+        if (!Enum.TryParse<LockType>(request.Type, ignoreCase: true, out var lockType))
+        {
+            return CommandResponse.FromError("InvalidArguments", "Invalid lock type.");
+        }
+
+        var duration = TimeSpan.FromSeconds(request.DurationSeconds);
+        _logger.LogInformation("Received Lock.Create (type={Type}, durationSeconds={Duration}).", lockType, request.DurationSeconds);
+
+        var lockState = await _lockStateManager.StartLockAsync(new LockParameters
+        {
+            Type = lockType,
+            Duration = duration,
+            BlockedApps = request.BlockedApps ?? Array.Empty<string>()
+        }, cancellationToken).ConfigureAwait(false);
+
+        var now = DateTimeOffset.UtcNow;
+        var remaining = lockState.ExpiresAt - now;
+        if (remaining < TimeSpan.Zero)
+        {
+            remaining = TimeSpan.Zero;
+        }
+
+        _logger.LogInformation("Lock.Create succeeded (type={Type}, expiresAt={ExpiresAt}).", lockState.Type, lockState.ExpiresAt);
+        return new CommandResponse
+        {
+            Success = true,
+            Result = new
+            {
+                lockId = lockState.Id,
+                type = lockState.Type.ToString(),
+                startedAtUtc = lockState.StartedAt,
+                expiresAtUtc = lockState.ExpiresAt,
+                durationSeconds = (int)lockState.Duration.TotalSeconds,
+                remainingSeconds = (int)remaining.TotalSeconds,
+                blockedApps = lockState.BlockedApps
+            }
         };
     }
 

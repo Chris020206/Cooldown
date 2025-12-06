@@ -1,4 +1,3 @@
-using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -120,11 +119,11 @@ public sealed class NamedPipeClient : INamedPipeClient
             {
                 responseEnvelope = JsonSerializer.Deserialize<MessageEnvelope>(line, _serializerOptions);
             }
-        catch (JsonException ex)
-        {
-            Debug.WriteLine($"Failed to deserialize response envelope: {ex.Message}");
-            return new CommandResponse<TResponse>
+            catch (JsonException ex)
             {
+                Debug.WriteLine($"Failed to deserialize response envelope: {ex.Message}");
+                return new CommandResponse<TResponse>
+                {
                     Success = false,
                     Error = new ErrorPayload
                     {

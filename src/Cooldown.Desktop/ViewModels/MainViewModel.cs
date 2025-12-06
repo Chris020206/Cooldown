@@ -16,6 +16,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly BlockerConfigService _configService;
     private readonly BlockerEngineHost _engineHost;
     private readonly INamedPipeClient _ipcClient;
+    private readonly ILockIpcClient _lockIpcClient;
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
     private readonly SemaphoreSlim _saveLock = new(1, 1);
@@ -37,6 +38,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _configService = configService;
         _engineHost = engineHost;
         _ipcClient = ipcClient;
+        _lockIpcClient = new LockIpcClient(_ipcClient);
         _dispatcher = dispatcher;
         PresetDurations = new ObservableCollection<int>(new[] { 5, 15, 30, 60, 120, 240 });
         _selectedDuration = PresetDurations.First();
@@ -52,7 +54,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _timer.Tick += (_, _) => UpdateRemainingTime();
 
         CreateLockCommand = new AsyncRelayCommand(_ => CreateLockAsync(), _ => IsEngineRunning);
-        CancelLockCommand = new RelayCommand(_ => CancelLock(), _ => LockStatus.CanCancel);
+        CancelLockCommand = new AsyncRelayCommand(_ => CancelLockAsync(), _ => LockStatus.CanCancel);
         AddBlockedAppCommand = new AsyncRelayCommand(_ => AddBlockedAppAsync());
         RemoveBlockedAppCommand = new AsyncRelayCommand(app => RemoveBlockedAppAsync(app as BlockedAppViewModel));
         SaveBlockedAppsCommand = new AsyncRelayCommand(_ => SaveConfigurationAsync());
@@ -73,7 +75,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
     public AsyncRelayCommand CreateLockCommand { get; }
 
-    public RelayCommand CancelLockCommand { get; }
+    public AsyncRelayCommand CancelLockCommand { get; }
 
     public AsyncRelayCommand AddBlockedAppCommand { get; }
 
@@ -152,7 +154,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         await _engineHost.StartAsync(_config);
         IsEngineRunning = true;
 
-        UpdateLockState(_engineHost.GetStatus());
+        await RefreshLockStateAsync();
         StatusMessage = "Ready";
 
         // Optionally attempt an initial ping to surface service availability.
@@ -174,12 +176,6 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ErrorMessage = null;
 
-        if (!IsEngineRunning)
-        {
-            ErrorMessage = "Engine not running";
-            return;
-        }
-
         var minutes = CustomDurationMinutes > 0 ? CustomDurationMinutes : SelectedDuration;
         if (minutes <= 0)
         {
@@ -187,30 +183,52 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var state = _engineHost.CreateLock(minutes, SelectedLockType);
-        UpdateLockState(state);
-        StatusMessage = $"{SelectedLockType} lock created for {minutes} minutes";
-        await Task.CompletedTask;
+        System.Diagnostics.Debug.WriteLine($"CreateLockAsync invoked. Type={SelectedLockType}, minutes={minutes}");
+        var response = await _lockIpcClient.CreateLockAsync(new LockCreateRequest
+        {
+            Type = SelectedLockType.ToString(),
+            DurationSeconds = minutes * 60,
+            BlockedApps = BlockedApps.Where(a => a.Enabled).Select(a => a.Name).ToArray()
+        });
+
+        if (response.Success && response.Result != null)
+        {
+            ApplyLockState(response.Result);
+            StatusMessage = $"{SelectedLockType} lock created for {minutes} minutes";
+            ErrorMessage = null;
+            await RefreshLockStateAsync();
+        }
+        else
+        {
+            var err = response.Error;
+            ErrorMessage = err != null ? $"Service error: {err.Code} - {err.Message}" : "Service unavailable (lock create failed).";
+            StatusMessage = "Failed to create lock via service.";
+        }
     }
 
     private void CancelLock()
     {
         ErrorMessage = null;
 
-        if (!IsEngineRunning)
-        {
-            return;
-        }
+        _ = CancelLockAsync();
+    }
 
-        if (_engineHost.CancelLock())
+    private async Task CancelLockAsync()
+    {
+        System.Diagnostics.Debug.WriteLine("CancelLockAsync invoked.");
+        var response = await _lockIpcClient.CancelLockAsync(new LockCancelRequest());
+        if (response.Success && response.Result != null && response.Result.Canceled)
         {
             StatusMessage = "Lock canceled";
-            UpdateLockState(_engineHost.GetStatus());
+            ErrorMessage = null;
+            await RefreshLockStateAsync();
         }
         else
         {
-            ErrorMessage = "Hard locks cannot be canceled.";
+            var err = response.Error;
+            ErrorMessage = err != null ? $"Service error: {err.Code} - {err.Message}" : "Unable to cancel lock via service.";
             StatusMessage = "Unable to cancel lock";
+            await RefreshLockStateAsync();
         }
     }
 
@@ -248,6 +266,27 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         app.PropertyChanged -= OnBlockedAppPropertyChanged;
         BlockedApps.Remove(app);
         await SaveConfigurationAsync();
+    }
+
+    private async Task RefreshLockStateAsync()
+    {
+        System.Diagnostics.Debug.WriteLine("RefreshLockStateAsync invoked.");
+        var response = await _lockIpcClient.GetLockStateAsync();
+        if (response.Success && response.Result != null)
+        {
+            if (!response.Result.HasActiveLock || response.Result.Lock == null)
+            {
+                ClearLockDisplay();
+                return;
+            }
+
+            ApplyLockState(response.Result.Lock);
+        }
+        else
+        {
+            var err = response.Error;
+            ServiceStatus = err != null ? $"Service error: {err.Code} - {err.Message}" : "Service unavailable (lock state).";
+        }
     }
 
     private async Task SaveConfigurationAsync()
@@ -308,6 +347,61 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private void ApplyLockState(LockCreateResponse response)
+    {
+        _activeLock = new LockState
+        {
+            IsActive = true,
+            Type = Enum.TryParse<LockType>(response.Type, true, out var parsed) ? parsed : LockType.Soft,
+            StartTime = response.StartedAtUtc,
+            EndTime = response.ExpiresAtUtc,
+            DurationMinutes = response.DurationSeconds / 60
+        };
+
+        LockStatus.IsActive = true;
+        LockStatus.LockType = _activeLock.Type.ToString();
+        LockStatus.CanCancel = _activeLock.Type == LockType.Soft;
+        LockStatus.EndsAt = response.ExpiresAtUtc.ToLocalTime().ToString("t");
+        UpdateRemainingTime();
+        if (!_timer.IsEnabled)
+        {
+            _timer.Start();
+        }
+    }
+
+    private void ApplyLockState(LockStateDto dto)
+    {
+        _activeLock = new LockState
+        {
+            IsActive = true,
+            Type = Enum.TryParse<LockType>(dto.Type, true, out var parsed) ? parsed : LockType.Soft,
+            StartTime = dto.StartedAtUtc,
+            EndTime = dto.ExpiresAtUtc,
+            DurationMinutes = dto.DurationSeconds / 60
+        };
+
+        LockStatus.IsActive = true;
+        LockStatus.LockType = _activeLock.Type.ToString();
+        LockStatus.CanCancel = _activeLock.Type == LockType.Soft;
+        LockStatus.EndsAt = dto.ExpiresAtUtc.ToLocalTime().ToString("t");
+        UpdateRemainingTime();
+        if (!_timer.IsEnabled)
+        {
+            _timer.Start();
+        }
+    }
+
+    private void ClearLockDisplay()
+    {
+        _activeLock = null;
+        LockStatus.IsActive = false;
+        LockStatus.LockType = "None";
+        LockStatus.Remaining = "--";
+        LockStatus.EndsAt = "--";
+        LockStatus.CanCancel = false;
+        _timer.Stop();
+    }
+
     private void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         _ = SaveConfigurationAsync();
@@ -327,41 +421,14 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLockStateChanged(object? sender, LockStateChangedEventArgs e)
     {
-        _dispatcher.Invoke(() => UpdateLockState(e.State));
-    }
-
-    private void UpdateLockState(LockState state)
-    {
-        if (!state.IsActive)
-        {
-            _activeLock = null;
-            LockStatus.IsActive = false;
-            LockStatus.LockType = "None";
-            LockStatus.Remaining = "--";
-            LockStatus.EndsAt = "--";
-            LockStatus.CanCancel = false;
-            _timer.Stop();
-            return;
-        }
-
-        _activeLock = state;
-        LockStatus.IsActive = true;
-        LockStatus.LockType = state.Type.ToString();
-        LockStatus.CanCancel = state.Type == LockType.Soft;
-        LockStatus.EndsAt = state.EndTime.ToLocalTime().ToString("t");
-        UpdateRemainingTime();
-
-        if (!_timer.IsEnabled)
-        {
-            _timer.Start();
-        }
+        _ = RefreshLockStateAsync();
     }
 
     private void UpdateRemainingTime()
     {
-        if (_activeLock is { IsActive: true } state)
+        if (_activeLock != null)
         {
-            var remaining = state.EndTime - DateTimeOffset.Now;
+            var remaining = _activeLock.EndTime - DateTimeOffset.Now;
             if (remaining < TimeSpan.Zero)
             {
                 remaining = TimeSpan.Zero;
