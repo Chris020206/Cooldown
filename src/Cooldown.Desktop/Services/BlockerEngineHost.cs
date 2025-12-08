@@ -46,6 +46,18 @@ public sealed class BlockerEngineHost : IAsyncDisposable
         return _engine!.GetStatus();
     }
 
+    public LockState ApplyServiceLock(LockType type, DateTimeOffset startedAtUtc, DateTimeOffset expiresAtUtc)
+    {
+        EnsureRunning();
+        return _engine!.ApplyServiceLock(type, startedAtUtc, expiresAtUtc);
+    }
+
+    public void ClearServiceLock()
+    {
+        EnsureRunning();
+        _engine!.ClearServiceLock();
+    }
+
     public void UpdateConfiguration(BlockerConfig config)
     {
         EnsureRunning();

@@ -13,9 +13,13 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public BlockerEngine(BlockerConfig config)
     {
+        // Pipeline overview:
+        // 1) Config drives the effective blocked set (flat + process groups).
+        // 2) ProcessMonitor watches running processes and raises detections.
+        // 3) LockManager tracks active locks; BlockerEngine enforces by killing matches (pre-existing + new).
         config.Normalize();
         _config = config;
-        _monitor = new ProcessMonitor(config.EnabledProcessNames, config.CheckIntervalMs);
+        _monitor = new ProcessMonitor(config.EnabledProcessNamesWithGroups, config.CheckIntervalMs);
         _monitor.ProcessDetected += OnProcessDetected;
 
         _lockManager = new LockManager();
@@ -69,14 +73,7 @@ public sealed class BlockerEngine : IAsyncDisposable
     public LockState CreateLock(int minutes, LockType type)
     {
         var state = _lockManager.CreateLock(minutes, type);
-
-        if (state.IsActive)
-        {
-            var terminated = TerminateExistingBlockedProcesses();
-            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(type, terminated));
-        }
-
-        return state;
+        return OnLockActivated(state, "local-create");
     }
 
     public bool CancelLock()
@@ -86,11 +83,22 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public LockState GetStatus() => _lockManager.GetStatus();
 
+    public LockState ApplyServiceLock(LockType type, DateTimeOffset startedAtUtc, DateTimeOffset expiresAtUtc)
+    {
+        var state = _lockManager.ApplyExternalLock(startedAtUtc.ToLocalTime(), expiresAtUtc.ToLocalTime(), type);
+        return OnLockActivated(state, "service-sync");
+    }
+
+    public void ClearServiceLock()
+    {
+        _lockManager.ForceClearLock();
+    }
+
     public void UpdateConfig(BlockerConfig config)
     {
         config.Normalize();
         _config = config;
-        _monitor.UpdateTargets(config.EnabledProcessNames);
+        _monitor.UpdateTargets(config.EnabledProcessNamesWithGroups);
         _monitor.UpdateCheckInterval(config.CheckIntervalMs);
     }
 
@@ -101,6 +109,7 @@ public sealed class BlockerEngine : IAsyncDisposable
             return;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[Monitor] Detected blocked process {e.ProcessName} (PID {e.ProcessId}).");
         HandleProcessTermination(e.ProcessId, e.ProcessName);
     }
 
@@ -123,18 +132,23 @@ public sealed class BlockerEngine : IAsyncDisposable
             return 0;
         }
 
-        var targets = _config.EnabledProcessNames.ToList();
+        var targets = _config.EnabledProcessNamesWithGroups.ToList();
         if (targets.Count == 0)
         {
             return 0;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[LockStart] Pre-existing scan. Blocked set ({targets.Count}): {string.Join(", ", targets)}");
         return ProcessTerminator.TerminateExistingProcesses(targets, HandleProcessTermination);
     }
 
     private ProcessTerminationResult HandleProcessTermination(int processId, string processName)
     {
+        var groupId = ResolveGroup(processName);
+        System.Diagnostics.Debug.WriteLine($"[Kill] Attempting to terminate {processName} (PID {processId}) group={groupId ?? "none"}");
+
         var result = ProcessKiller.TerminateProcess(processId, processName);
+        System.Diagnostics.Debug.WriteLine($"[Kill] Result for {processName} (PID {processId}): {result.Status} - {result.Message}");
         ProcessBlocked?.Invoke(this, new ProcessBlockedEventArgs
         {
             ProcessId = processId,
@@ -143,6 +157,36 @@ public sealed class BlockerEngine : IAsyncDisposable
         });
 
         return result;
+    }
+
+    private LockState OnLockActivated(LockState state, string source)
+    {
+        if (state.IsActive)
+        {
+            var terminated = TerminateExistingBlockedProcesses();
+            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(state.Type, terminated));
+            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, terminated {terminated} pre-existing processes.");
+        }
+
+        return state;
+    }
+
+    private string? ResolveGroup(string processName)
+    {
+        if (_config?.EnabledProcessGroups == null)
+        {
+            return null;
+        }
+
+        foreach (var group in _config.EnabledProcessGroups)
+        {
+            if (group.AllProcessNames.Any(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return group.Id;
+            }
+        }
+
+        return null;
     }
 }
 

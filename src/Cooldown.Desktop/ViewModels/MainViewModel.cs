@@ -370,6 +370,9 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _timer.Start();
         }
+
+        // Keep local enforcement in sync with the service lock so processes get terminated.
+        _engineHost.ApplyServiceLock(_activeLock.Type, response.StartedAtUtc, response.ExpiresAtUtc);
     }
 
     private void ApplyLockState(LockStateDto dto)
@@ -392,6 +395,9 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _timer.Start();
         }
+
+        // Service-driven lock state updates must also drive local enforcement.
+        _engineHost.ApplyServiceLock(_activeLock.Type, dto.StartedAtUtc, dto.ExpiresAtUtc);
     }
 
     private void ClearLockDisplay()
@@ -403,6 +409,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         LockStatus.EndsAt = "--";
         LockStatus.CanCancel = false;
         _timer.Stop();
+        _engineHost.ClearServiceLock();
     }
 
     private void OnBlockedAppPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

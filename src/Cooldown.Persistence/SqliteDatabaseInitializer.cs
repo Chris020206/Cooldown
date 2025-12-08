@@ -27,36 +27,9 @@ public sealed class SqliteDatabaseInitializer
         await using var connection = new SqliteConnection($"Data Source={_dbPath}");
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var commands = new[]
-        {
-            @"CREATE TABLE IF NOT EXISTS SchemaVersion (
-                Id INTEGER PRIMARY KEY CHECK (Id = 1),
-                Version INTEGER NOT NULL
-              );",
-            @"INSERT OR IGNORE INTO SchemaVersion (Id, Version) VALUES (1, 1);",
-            @"CREATE TABLE IF NOT EXISTS LockState (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                IsActive INTEGER NOT NULL,
-                LockType TEXT NOT NULL,
-                DurationSeconds INTEGER NOT NULL,
-                StartedAtUtc TEXT NOT NULL,
-                ExpiresAtUtc TEXT NOT NULL,
-                BlockedAppsJson TEXT NOT NULL,
-                LastUpdatedUtc TEXT NOT NULL
-              );",
-            @"CREATE TABLE IF NOT EXISTS Settings (
-                Key TEXT PRIMARY KEY,
-                ValueJson TEXT NOT NULL
-              );"
-        };
+        var migrator = new SqliteMigrator(_logger);
+        var finalVersion = await migrator.MigrateAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        foreach (var sql in commands)
-        {
-            await using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        _logger?.LogInformation("SQLite schema ensured (LockState, Settings, SchemaVersion).");
+        _logger?.LogInformation("SQLite schema up to date (version {Version}).", finalVersion);
     }
 }
