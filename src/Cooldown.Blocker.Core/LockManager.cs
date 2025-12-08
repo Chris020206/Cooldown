@@ -7,6 +7,9 @@ public sealed class LockManager
 
     public event EventHandler<LockState>? LockStateChanged;
 
+    /// <summary>
+    /// Creates a new lock for the given duration (minutes), raising state change events.
+    /// </summary>
     public LockState CreateLock(int minutes, LockType type)
     {
         if (minutes <= 0)
@@ -14,13 +17,51 @@ public sealed class LockManager
             throw new ArgumentOutOfRangeException(nameof(minutes));
         }
 
+        return CreateLock(TimeSpan.FromMinutes(minutes), type);
+    }
+
+    /// <summary>
+    /// Creates a new lock for the given duration (supports second precision), raising state change events.
+    /// </summary>
+    public LockState CreateLock(TimeSpan duration, LockType type)
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(duration));
+        }
+
+        var now = DateTimeOffset.Now;
         var lockState = new LockState
         {
             IsActive = true,
             Type = type,
-            DurationMinutes = minutes,
-            StartTime = DateTimeOffset.Now,
-            EndTime = DateTimeOffset.Now.AddMinutes(minutes)
+            DurationMinutes = (int)Math.Ceiling(duration.TotalMinutes),
+            StartTime = now,
+            EndTime = now.Add(duration)
+        };
+
+        SetLock(lockState);
+        return lockState.Clone();
+    }
+
+    /// <summary>
+    /// Applies an externally provided lock window (used when syncing with the service).
+    /// </summary>
+    public LockState ApplyExternalLock(DateTimeOffset startTime, DateTimeOffset endTime, LockType type)
+    {
+        if (endTime <= startTime)
+        {
+            throw new ArgumentOutOfRangeException(nameof(endTime));
+        }
+
+        var duration = endTime - startTime;
+        var lockState = new LockState
+        {
+            IsActive = true,
+            Type = type,
+            DurationMinutes = (int)Math.Ceiling(duration.TotalMinutes),
+            StartTime = startTime,
+            EndTime = endTime
         };
 
         SetLock(lockState);
@@ -110,6 +151,27 @@ public sealed class LockManager
         }
 
         return isActive;
+    }
+
+    /// <summary>
+    /// Forces the current lock (if any) to inactive state. Used when syncing to a service-canceled/expired lock.
+    /// </summary>
+    public void ForceClearLock()
+    {
+        LockState? changedState = null;
+        lock (_sync)
+        {
+            if (_currentLock is { IsActive: true })
+            {
+                _currentLock.IsActive = false;
+                changedState = _currentLock.Clone();
+            }
+        }
+
+        if (changedState != null)
+        {
+            RaiseLockStateChanged(changedState);
+        }
     }
 
     public async Task RunTimerAsync(CancellationToken cancellationToken)

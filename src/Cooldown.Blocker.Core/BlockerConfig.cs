@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Cooldown.Blocker.Core.Processes;
 
 namespace Cooldown.Blocker.Core;
 
@@ -10,17 +11,55 @@ public class BlockerConfig
     [JsonPropertyName("blockedProcessNames")]
     public List<string>? LegacyBlockedProcessNames { get; set; }
 
+    [JsonPropertyName("processGroups")]
+    public List<ProcessGroup>? ProcessGroups { get; set; }
+
     [JsonPropertyName("checkIntervalMs")]
     public int CheckIntervalMs { get; set; } = 1000;
 
     [JsonPropertyName("enableToastNotifications")]
     public bool EnableToastNotifications { get; set; } = true;
 
+    /// <summary>
+    /// Primary flat list of enabled process names used by the current blocking engine.
+    /// </summary>
     public IEnumerable<string> EnabledProcessNames => Apps
         .Where(app => app.Enabled)
         .Select(app => NormalizeProcessName(app.Name))
         .Where(name => !string.IsNullOrWhiteSpace(name))
         .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Optional richer process groups (game/launcher mappings) for future blocking logic.
+    /// </summary>
+    public IReadOnlyList<ProcessGroup> EnabledProcessGroups => ProcessGroups?.Where(group => group.Enabled).ToList()
+        ?? new List<ProcessGroup>();
+
+    /// <summary>
+    /// Combined process names from flat apps and enabled process groups (primary + dependencies).
+    /// </summary>
+    public IReadOnlyCollection<string> EnabledProcessNamesWithGroups
+    {
+        get
+        {
+            var names = new HashSet<string>(EnabledProcessNames, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in EnabledProcessGroups)
+            {
+                foreach (var name in group.AllProcessNames)
+                {
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+
+                    names.Add(name);
+                }
+            }
+
+            return names;
+        }
+    }
 
     public void Normalize()
     {
@@ -34,7 +73,6 @@ public class BlockerConfig
         }
 
         Apps ??= new List<BlockableApp>();
-
         foreach (var app in Apps)
         {
             if (string.IsNullOrWhiteSpace(app.Name))
@@ -44,6 +82,12 @@ public class BlockerConfig
             }
 
             app.Name = NormalizeProcessName(app.Name);
+        }
+
+        ProcessGroups ??= new List<ProcessGroup>();
+        foreach (var group in ProcessGroups)
+        {
+            group.Normalize(NormalizeProcessName);
         }
     }
 
@@ -66,7 +110,8 @@ public class BlockerConfig
                 new("dota2")
             },
             CheckIntervalMs = 1000,
-            EnableToastNotifications = true
+            EnableToastNotifications = true,
+            ProcessGroups = new List<ProcessGroup>()
         };
     }
 
