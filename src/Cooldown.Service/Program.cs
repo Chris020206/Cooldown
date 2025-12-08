@@ -1,4 +1,5 @@
 using System.ServiceProcess;
+using Cooldown.Persistence;
 using Cooldown.Service.Engine;
 using Cooldown.Service.Hosting;
 using Cooldown.Service.IPC;
@@ -36,6 +37,7 @@ internal static class Program
         }
 
         using var host = builder.Build();
+        await InitializePersistenceAsync(host).ConfigureAwait(false);
         await host.RunAsync();
     }
 
@@ -68,8 +70,13 @@ internal static class Program
         builder.ConfigureServices((context, services) =>
         {
             services.Configure<ServiceOptions>(context.Configuration.GetSection("Service"));
+            var dbPath = PersistencePaths.GetServiceDatabasePath();
 
-            services.AddSingleton<ILockStateManager, InMemoryLockStateManager>();
+            services.AddSingleton(sp => new SqliteDatabaseInitializer(dbPath, sp.GetService<ILogger<SqliteDatabaseInitializer>>()));
+            services.AddSingleton<ILockStateRepository>(sp => new SqliteLockStateRepository(dbPath, sp.GetService<ILogger<SqliteLockStateRepository>>()));
+            services.AddSingleton<ISettingsRepository>(sp => new SqliteSettingsRepository(dbPath, sp.GetService<ILogger<SqliteSettingsRepository>>()));
+
+            services.AddSingleton<ILockStateManager, SqliteLockStateManager>();
             services.AddSingleton<IBlockingEngine, BlockingEngineStub>();
             services.AddSingleton<INamedPipeServer, NamedPipeServer>();
 
@@ -81,4 +88,52 @@ internal static class Program
 
     private static string[] FilterServiceArgs(string[] args) =>
         args.Where(arg => !string.Equals(arg, ConsoleSwitch, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+    private static async Task InitializePersistenceAsync(IHost host)
+    {
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Program");
+        var initializer = services.GetRequiredService<SqliteDatabaseInitializer>();
+
+        await initializer.InitDatabaseAsync().ConfigureAwait(false);
+
+        var lockRepo = services.GetRequiredService<ILockStateRepository>();
+        var lockStateManager = services.GetRequiredService<ILockStateManager>();
+        var pipeServer = services.GetRequiredService<INamedPipeServer>();
+        var current = await lockRepo.GetCurrentAsync().ConfigureAwait(false);
+        if (current == null || !current.IsActive)
+        {
+            logger.LogInformation("SQLite persistence initialized; no lock state found.");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var remaining = current.ExpiresAtUtc - now;
+        if (remaining <= TimeSpan.Zero)
+        {
+            logger.LogInformation("Found expired lock in SQLite (expired at {ExpiresAt}); clearing.", current.ExpiresAtUtc);
+            await lockRepo.ClearAsync().ConfigureAwait(false);
+            return;
+        }
+
+        var parsedType = Enum.TryParse<LockType>(current.LockType, true, out var lockType)
+            ? lockType
+            : LockType.Soft;
+
+        await lockStateManager.StartLockAsync(new LockParameters
+        {
+            Type = parsedType,
+            Duration = remaining,
+            BlockedApps = current.BlockedApps?.ToArray() ?? Array.Empty<string>()
+        }).ConfigureAwait(false);
+
+        logger.LogInformation("Rehydrated active {Type} lock from SQLite (remaining={Remaining}, blockedApps={BlockedApps}).",
+            parsedType,
+            remaining,
+            current.BlockedApps?.Count ?? 0);
+
+        // Optional: push a state change event so the desktop updates immediately.
+        await pipeServer.BroadcastLockStateAsync("Rehydrated", CancellationToken.None).ConfigureAwait(false);
+    }
 }

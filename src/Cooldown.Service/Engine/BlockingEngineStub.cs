@@ -1,5 +1,6 @@
 using Cooldown.Service.State;
 using Microsoft.Extensions.Logging;
+using Cooldown.Service.IPC;
 
 namespace Cooldown.Service.Engine;
 
@@ -11,11 +12,13 @@ public sealed class BlockingEngineStub : IBlockingEngine
 {
     private readonly ILogger<BlockingEngineStub> _logger;
     private readonly ILockStateManager _lockStateManager;
+    private readonly INamedPipeServer _namedPipeServer;
 
-    public BlockingEngineStub(ILogger<BlockingEngineStub> logger, ILockStateManager lockStateManager)
+    public BlockingEngineStub(ILogger<BlockingEngineStub> logger, ILockStateManager lockStateManager, INamedPipeServer namedPipeServer)
     {
         _logger = logger;
         _lockStateManager = lockStateManager;
+        _namedPipeServer = namedPipeServer;
     }
 
     public Task PulseAsync(CancellationToken cancellationToken)
@@ -38,6 +41,7 @@ public sealed class BlockingEngineStub : IBlockingEngine
         {
             _logger.LogInformation("Pulse: lock expired at {ExpiresAt}; clearing.", current.ExpiresAt);
             await _lockStateManager.CancelLockAsync(cancellationToken).ConfigureAwait(false);
+            await _namedPipeServer.BroadcastLockStateAsync("Expired", cancellationToken).ConfigureAwait(false);
             return;
         }
 

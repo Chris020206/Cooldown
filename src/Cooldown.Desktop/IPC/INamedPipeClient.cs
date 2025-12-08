@@ -12,4 +12,14 @@ public interface INamedPipeClient : IAsyncDisposable
         string command,
         TRequest requestPayload,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts the background listener for responses and events.
+    /// </summary>
+    Task StartListeningAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Raised when the service pushes a Lock.StateChanged event.
+    /// </summary>
+    event Action<LockStateChangedEventPayload>? LockStateChanged;
 }

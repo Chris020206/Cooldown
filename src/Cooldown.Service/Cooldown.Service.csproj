@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\\Cooldown.Blocker.Core\\Cooldown.Blocker.Core.csproj" />
+    <ProjectReference Include="..\\Cooldown.Persistence\\Cooldown.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>

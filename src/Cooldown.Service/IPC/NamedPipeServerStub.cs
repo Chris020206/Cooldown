@@ -22,4 +22,10 @@ public sealed class NamedPipeServerStub : INamedPipeServer
         _logger.LogTrace("Named pipe server stub poll. TODO: accept/handle commands in Phase 2.2.");
         return Task.CompletedTask;
     }
+
+    public Task BroadcastLockStateAsync(string reason, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Named pipe server stub would broadcast lock state (reason={Reason}).", reason);
+        return Task.CompletedTask;
+    }
 }

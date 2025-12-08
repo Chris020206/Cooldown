@@ -34,14 +34,19 @@ Fields:
 - `protocolVersion` (int): protocol contract version (v1 for Phase 2).
 - `messageType` (string): `"Command"`, `"Response"`, or `"Event"`.
 - `command` (string): command/event identifier (e.g., `Lock.Create`, `Service.Ping`).
-- `correlationId` (string GUID): echoed in responses to pair with requests. For events, optional/omitted.
+- `correlationId` (string GUID): echoed in responses to pair with requests. Optional/omitted for events.
 - `timestampUtc` (ISO 8601): sender timestamp.
 - `payload` (object): command/event-specific body.
 
 Direction conventions:
-- Commands: Desktop → Service (`messageType = "Command"`).
-- Responses: Service → Desktop (`messageType = "Response"`, same `correlationId` as request).
-- Events: Service → Desktop (`messageType = "Event"`, no request required).
+- Commands: Desktop -> Service (`messageType = "Command"`).
+- Responses: Service -> Desktop (`messageType = "Response"`, same `correlationId` as request).
+- Events: Service -> Desktop (`messageType = "Event"`, no request required).
+
+Request/Response/Event correlation:
+- Requests (client -> server) use `command + correlationId`.
+- Responses (server -> client) echo the same `correlationId`.
+- Events (server -> client) are matched by `command/eventType`; they are not tied to a client request and may omit `correlationId`.
 
 ## 4. Command Set (Requests & Responses)
 
@@ -162,27 +167,42 @@ Direction conventions:
 }
 ```
 
-## 5. Events / Notifications (Service → Desktop)
+## 5. Events / Notifications (Service -> Desktop)
 
-### 5.1 Lock.StatusChanged
-- Event: `Lock.StatusChanged`
+### 5.1 Lock.StateChanged
+- Event: `Lock.StateChanged` (server-initiated; no request required)
+- Envelope:
+```json
+{
+  "protocolVersion": 1,
+  "messageType": "Event",
+  "command": "Lock.StateChanged",
+  "timestampUtc": "2025-12-06T12:34:56.789Z",
+  "payload": { /* see below */ }
+}
+```
 - Payload:
 ```json
 {
-  "hasActiveLock": true,
-  "lock": {
+  "hasActiveLock": true,            // false when no lock is active
+  "lock": {                         // omitted/null when hasActiveLock = false
     "lockId": "c2b40a10-5b5e-4b64-af39-8d6c3cde1b5f",
     "type": "Soft",
     "startedAtUtc": "2025-12-06T12:00:00Z",
     "expiresAtUtc": "2025-12-06T12:30:00Z",
     "durationSeconds": 1800,
     "remainingSeconds": 900,
-    "blockedApps": [ "Steam" ]
+    "blockedApps": [ "steam.exe", "riotclientservices.exe" ]
   },
-  "reason": "Created" // or "Canceled", "Expired"
+  "reason": "Created"               // "Created" | "Canceled" | "Expired" (optional)
 }
 ```
-- Future event ideas (not required in Phase 2.2): `Apps.BlockEvent`, `Service.Warning`, `Service.Error`.
+
+Notes:
+- correlationId is not required for events.
+- Requests (client -> server) use command + correlationId; responses match the correlationId.
+- Events (server -> client) use messageType = "Event" and are matched by command/eventType.
+- Future event ideas (not required in Phase 2.2): Apps.BlockEvent, Service.Warning, Service.Error, Service.ShuttingDown.
 
 ## 6. Error Handling & Error Codes
 - Responses keep the envelope; `payload` contains either the success body or an error object.
@@ -233,3 +253,5 @@ Direction conventions:
 - `Service.TamperEvent` — notify of tamper detection.
 - `Stats.GetSummary` — daily/weekly stats queries.
 - Binary payload optimization or length-prefixed framing for higher throughput if needed later.
+
+

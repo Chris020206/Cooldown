@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -12,6 +12,8 @@ EndProject
 Project("{C7167F0D-BC9F-4E6E-AFE1-012C56B48DB5}") = "Cooldown.Desktop.Package", "src\Cooldown.Desktop.Package\Cooldown.Desktop.Package.wapproj", "{4F3E0FA7-EC16-4310-A7D5-077724936492}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cooldown.Service", "src\Cooldown.Service\Cooldown.Service.csproj", "{B1C53573-90F4-4C01-A8DC-4D62339C4520}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cooldown.Persistence", "src\\Cooldown.Persistence\\Cooldown.Persistence.csproj", "{46F43D11-580D-4CA5-9037-DB59DD98D919}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

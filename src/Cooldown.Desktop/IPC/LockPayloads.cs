@@ -86,3 +86,15 @@ public sealed class LockStateDto
     [JsonPropertyName("blockedApps")]
     public string[]? BlockedApps { get; set; }
 }
+
+public sealed class LockStateChangedEventPayload
+{
+    [JsonPropertyName("hasActiveLock")]
+    public bool HasActiveLock { get; set; }
+
+    [JsonPropertyName("lock")]
+    public LockStateDto? Lock { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}

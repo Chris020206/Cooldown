@@ -20,6 +20,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
     private readonly ILogger<NamedPipeServer> _logger;
     private readonly ILockStateManager _lockStateManager;
     private readonly JsonSerializerOptions _serializerOptions;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly object _sync = new();
 
     private NamedPipeServerStream? _server;
@@ -108,6 +109,12 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             await CleanupClientAsync().ConfigureAwait(false);
             await BeginAcceptAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    public async Task BroadcastLockStateAsync(string reason, CancellationToken cancellationToken)
+    {
+        var current = await _lockStateManager.GetCurrentLockAsync(cancellationToken).ConfigureAwait(false);
+        await SendLockStateChangedEventAsync(current, reason, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -205,7 +212,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
                 }
 
                 _logger.LogInformation("Received IPC command {Command}.", envelope.Command);
-                await HandleEnvelopeAsync(envelope, writer, cancellationToken).ConfigureAwait(false);
+                await HandleEnvelopeAsync(envelope, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -226,7 +233,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
         }
     }
 
-    private async Task HandleEnvelopeAsync(MessageEnvelope envelope, StreamWriter writer, CancellationToken cancellationToken)
+    private async Task HandleEnvelopeAsync(MessageEnvelope envelope, CancellationToken cancellationToken)
     {
         if (!string.Equals(envelope.MessageType, "Command", StringComparison.OrdinalIgnoreCase))
         {
@@ -234,7 +241,16 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             return;
         }
 
-        var responsePayload = await DispatchCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
+        object responsePayload;
+        try
+        {
+            responsePayload = await DispatchCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling command {Command}.", envelope.Command);
+            responsePayload = CommandResponse.FromError("InternalError", "Service failed to process the command.");
+        }
 
         var response = new MessageEnvelope
         {
@@ -246,8 +262,39 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             Payload = JsonSerializer.SerializeToElement(responsePayload, _serializerOptions)
         };
 
-        var json = JsonSerializer.Serialize(response, _serializerOptions);
-        await writer.WriteLineAsync(json).ConfigureAwait(false);
+        await SendEnvelopeAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken cancellationToken)
+    {
+        if (_writer == null)
+        {
+            _logger.LogDebug("No connected client to send envelope for command {Command}.", envelope.Command);
+            return false;
+        }
+
+        var json = JsonSerializer.Serialize(envelope, _serializerOptions);
+
+        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _writer.WriteLineAsync(json).ConfigureAwait(false);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to send IPC envelope {Command}.", envelope.Command);
+            return false;
+        }
+        catch (ObjectDisposedException ex)
+        {
+            _logger.LogWarning(ex, "Writer disposed while sending IPC envelope {Command}.", envelope.Command);
+            return false;
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
     }
 
     private async Task<object> DispatchCommandAsync(MessageEnvelope envelope, CancellationToken cancellationToken)
@@ -306,16 +353,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
             Result = new
             {
                 hasActiveLock = true,
-                @lock = new
-                {
-                    lockId = current.Id,
-                    type = current.Type.ToString(),
-                    startedAtUtc = current.StartedAt,
-                    expiresAtUtc = current.ExpiresAt,
-                    durationSeconds = (int)current.Duration.TotalSeconds,
-                    remainingSeconds = (int)remaining.TotalSeconds,
-                    blockedApps = current.BlockedApps
-                }
+                @lock = BuildLockSnapshot(current, now)
             }
         };
     }
@@ -335,6 +373,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
 
         await _lockStateManager.CancelLockAsync(cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Lock.Cancel: canceled lock {LockId} type={Type}.", current.Id, current.Type);
+        await BroadcastLockStateAsync("Canceled", cancellationToken).ConfigureAwait(false);
         return new CommandResponse
         {
             Success = true,
@@ -383,6 +422,7 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
         }
 
         _logger.LogInformation("Lock.Create succeeded (type={Type}, expiresAt={ExpiresAt}).", lockState.Type, lockState.ExpiresAt);
+        await BroadcastLockStateAsync("Created", cancellationToken).ConfigureAwait(false);
         return new CommandResponse
         {
             Success = true,
@@ -397,6 +437,60 @@ public sealed class NamedPipeServer : INamedPipeServer, IAsyncDisposable
                 blockedApps = lockState.BlockedApps
             }
         };
+    }
+
+    private static LockStateSnapshot BuildLockSnapshot(LockState current, DateTimeOffset now)
+    {
+        var remaining = current.ExpiresAt - now;
+        if (remaining < TimeSpan.Zero)
+        {
+            remaining = TimeSpan.Zero;
+        }
+
+        return new LockStateSnapshot
+        {
+            LockId = current.Id,
+            Type = current.Type.ToString(),
+            StartedAtUtc = current.StartedAt,
+            ExpiresAtUtc = current.ExpiresAt,
+            DurationSeconds = (int)current.Duration.TotalSeconds,
+            RemainingSeconds = (int)remaining.TotalSeconds,
+            BlockedApps = current.BlockedApps
+        };
+    }
+
+    private async Task SendLockStateChangedEventAsync(LockState? lockState, string reason, CancellationToken cancellationToken)
+    {
+        if (_server == null || _writer == null || !_server.IsConnected)
+        {
+            _logger.LogDebug("Lock.StateChanged event not sent (no connected client).");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var payload = lockState == null
+            ? new LockStateChangedEventPayload { HasActiveLock = false, Reason = reason }
+            : new LockStateChangedEventPayload { HasActiveLock = true, Lock = BuildLockSnapshot(lockState, now), Reason = reason };
+
+        var envelope = new MessageEnvelope
+        {
+            ProtocolVersion = 1,
+            MessageType = "Event",
+            Command = "Lock.StateChanged",
+            CorrelationId = null,
+            TimestampUtc = now,
+            Payload = JsonSerializer.SerializeToElement(payload, _serializerOptions)
+        };
+
+        var isActive = lockState != null;
+        var remainingSeconds = lockState == null ? 0 : Math.Max(0, (int)(lockState.ExpiresAt - now).TotalSeconds);
+        var lockType = lockState?.Type.ToString() ?? "None";
+
+        var sent = await SendEnvelopeAsync(envelope, cancellationToken).ConfigureAwait(false);
+        if (sent)
+        {
+            _logger.LogInformation("Lock.StateChanged event sent: isActive={IsActive}, type={Type}, remainingSeconds={RemainingSeconds}, reason={Reason}.", isActive, lockType, remainingSeconds, reason);
+        }
     }
 
     private async Task CleanupClientAsync()
