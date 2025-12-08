@@ -20,6 +20,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
     private readonly SemaphoreSlim _saveLock = new(1, 1);
+    private readonly CancellationTokenSource _ipcListeningCts = new();
     private BlockerConfig? _config;
     private LockState? _activeLock;
     private int _selectedDuration;
@@ -150,6 +151,8 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _engineHost.LockStateChanged += OnLockStateChanged;
         _engineHost.ProcessBlocked += OnProcessBlocked;
         _engineHost.PreExistingProcessesTerminated += OnPreExistingProcessesTerminated;
+        _lockIpcClient.LockStateChanged += OnServiceLockStateChanged;
+        await _lockIpcClient.StartListeningAsync(_ipcListeningCts.Token);
 
         await _engineHost.StartAsync(_config);
         IsEngineRunning = true;
@@ -424,6 +427,29 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _ = RefreshLockStateAsync();
     }
 
+    private void OnServiceLockStateChanged(LockStateChangedEventPayload payload)
+    {
+        _ = _dispatcher.InvokeAsync(() =>
+        {
+            if (!payload.HasActiveLock || payload.Lock == null)
+            {
+                ClearLockDisplay();
+                StatusMessage = payload.Reason == "Expired" ? "Lock expired" : "No active lock";
+                return;
+            }
+
+            ApplyLockState(payload.Lock);
+            var reason = payload.Reason;
+            StatusMessage = reason switch
+            {
+                "Created" => "Lock created",
+                "Canceled" => "Lock canceled",
+                "Expired" => "Lock expired",
+                _ => "Lock state updated"
+            };
+        });
+    }
+
     private void UpdateRemainingTime()
     {
         if (_activeLock != null)
@@ -467,6 +493,9 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
         _engineHost.LockStateChanged -= OnLockStateChanged;
         _engineHost.ProcessBlocked -= OnProcessBlocked;
         _engineHost.PreExistingProcessesTerminated -= OnPreExistingProcessesTerminated;
+        _lockIpcClient.LockStateChanged -= OnServiceLockStateChanged;
+        _ipcListeningCts.Cancel();
+        _ipcListeningCts.Dispose();
         foreach (var app in BlockedApps)
         {
             app.PropertyChanged -= OnBlockedAppPropertyChanged;

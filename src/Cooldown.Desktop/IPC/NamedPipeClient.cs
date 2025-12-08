@@ -1,17 +1,16 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Cooldown.Desktop.IPC;
 
 /// <summary>
 /// Named pipe client for IPC per docs/IPC-Contract-v0.1.md.
 /// - Transport: Windows named pipe (duplex), newline-delimited JSON envelopes.
-/// - Single persistent connection per instance.
+/// - Single persistent connection per instance, with background listener for responses and events.
 /// </summary>
 public sealed class NamedPipeClient : INamedPipeClient
 {
@@ -24,9 +23,15 @@ public sealed class NamedPipeClient : INamedPipeClient
     };
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<MessageEnvelope>> _pendingResponses = new();
+
     private NamedPipeClientStream? _stream;
     private StreamReader? _reader;
     private StreamWriter? _writer;
+    private CancellationTokenSource? _listenCts;
+    private Task? _listenTask;
+
+    public event Action<LockStateChangedEventPayload>? LockStateChanged;
 
     public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
     {
@@ -48,6 +53,7 @@ public sealed class NamedPipeClient : INamedPipeClient
             await _stream.ConnectAsync(cancellationToken).ConfigureAwait(false);
             _reader = new StreamReader(_stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
             _writer = new StreamWriter(_stream, new UTF8Encoding(false)) { AutoFlush = true };
+            EnsureListenLoop(cancellationToken);
             return true;
         }
         catch (OperationCanceledException)
@@ -64,6 +70,15 @@ public sealed class NamedPipeClient : INamedPipeClient
         }
     }
 
+    public async Task StartListeningAsync(CancellationToken cancellationToken = default)
+    {
+        var connected = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+        if (connected)
+        {
+            EnsureListenLoop(cancellationToken);
+        }
+    }
+
     public async Task<CommandResponse<TResponse>> SendCommandAsync<TRequest, TResponse>(
         string command,
         TRequest requestPayload,
@@ -73,17 +88,18 @@ public sealed class NamedPipeClient : INamedPipeClient
         try
         {
             var connected = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-            if (!connected || _writer == null || _reader == null)
+            if (!connected || _writer == null)
             {
-                return new CommandResponse<TResponse>
-                {
-                    Success = false,
-                    Error = new ErrorPayload
-                    {
-                        Code = "Unavailable",
-                        Message = "Service not reachable (pipe not connected)."
-                    }
-                };
+                return BuildUnavailableResponse<TResponse>("Service not reachable (pipe not connected).");
+            }
+
+            EnsureListenLoop();
+
+            var correlationId = Guid.NewGuid().ToString("N");
+            var pending = new TaskCompletionSource<MessageEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_pendingResponses.TryAdd(correlationId, pending))
+            {
+                return BuildUnavailableResponse<TResponse>("Failed to register pending response handler.");
             }
 
             var envelope = new MessageEnvelope
@@ -91,7 +107,7 @@ public sealed class NamedPipeClient : INamedPipeClient
                 ProtocolVersion = 1,
                 MessageType = "Command",
                 Command = command,
-                CorrelationId = Guid.NewGuid().ToString("N"),
+                CorrelationId = correlationId,
                 TimestampUtc = DateTimeOffset.UtcNow,
                 Payload = BuildPayloadElement(requestPayload)
             };
@@ -99,51 +115,24 @@ public sealed class NamedPipeClient : INamedPipeClient
             var serialized = JsonSerializer.Serialize(envelope, _serializerOptions);
             await _writer.WriteLineAsync(serialized).ConfigureAwait(false);
 
-            var line = await _reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-            if (line == null)
-            {
-                CleanupStreams();
-                return new CommandResponse<TResponse>
-                {
-                    Success = false,
-                    Error = new ErrorPayload
-                    {
-                        Code = "Disconnected",
-                        Message = "Pipe disconnected while waiting for response."
-                    }
-                };
-            }
-
-            MessageEnvelope? responseEnvelope = null;
+            using var ctr = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
+            MessageEnvelope responseEnvelope;
             try
             {
-                responseEnvelope = JsonSerializer.Deserialize<MessageEnvelope>(line, _serializerOptions);
+                responseEnvelope = await pending.Task.ConfigureAwait(false);
             }
-            catch (JsonException ex)
+            catch (TaskCanceledException)
             {
-                Debug.WriteLine($"Failed to deserialize response envelope: {ex.Message}");
-                return new CommandResponse<TResponse>
-                {
-                    Success = false,
-                    Error = new ErrorPayload
-                    {
-                        Code = "ParseError",
-                        Message = "Invalid response envelope from service."
-                    }
-                };
+                return BuildUnavailableResponse<TResponse>("Operation canceled.");
             }
-
-            if (responseEnvelope == null)
+            catch (Exception ex)
             {
-                return new CommandResponse<TResponse>
-                {
-                    Success = false,
-                    Error = new ErrorPayload
-                    {
-                        Code = "EmptyResponse",
-                        Message = "Service returned an empty response."
-                    }
-                };
+                Debug.WriteLine($"NamedPipeClient: waiting for response failed ({ex.Message}).");
+                return BuildUnavailableResponse<TResponse>("I/O error during pipe communication.");
+            }
+            finally
+            {
+                _pendingResponses.TryRemove(correlationId, out _);
             }
 
             try
@@ -172,29 +161,13 @@ public sealed class NamedPipeClient : INamedPipeClient
         catch (OperationCanceledException)
         {
             Debug.WriteLine("NamedPipeClient: send canceled.");
-            return new CommandResponse<TResponse>
-            {
-                Success = false,
-                Error = new ErrorPayload
-                {
-                    Code = "Canceled",
-                    Message = "Operation canceled."
-                }
-            };
+            return BuildUnavailableResponse<TResponse>("Operation canceled.");
         }
         catch (IOException ex)
         {
             CleanupStreams();
             Debug.WriteLine($"NamedPipeClient: I/O error during send/receive ({ex.Message}).");
-            return new CommandResponse<TResponse>
-            {
-                Success = false,
-                Error = new ErrorPayload
-                {
-                    Code = "IOError",
-                    Message = "I/O error during pipe communication."
-                }
-            };
+            return BuildUnavailableResponse<TResponse>("I/O error during pipe communication.");
         }
         finally
         {
@@ -216,8 +189,139 @@ public sealed class NamedPipeClient : INamedPipeClient
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
+    private void EnsureListenLoop(CancellationToken cancellationToken = default)
+    {
+        if (_listenTask != null && !_listenTask.IsCompleted)
+        {
+            return;
+        }
+
+        _listenCts?.Cancel();
+        _listenCts?.Dispose();
+        _listenCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        if (_reader == null)
+        {
+            return;
+        }
+
+        _listenTask = Task.Run(() => ListenAsync(_listenCts.Token), CancellationToken.None);
+    }
+
+    private async Task ListenAsync(CancellationToken cancellationToken)
+    {
+        var reader = _reader;
+        if (reader == null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                if (line == null)
+                {
+                    FailAllPending(new IOException("Pipe disconnected."));
+                    CleanupStreams();
+                    break;
+                }
+
+                MessageEnvelope? envelope = null;
+                try
+                {
+                    envelope = JsonSerializer.Deserialize<MessageEnvelope>(line, _serializerOptions);
+                }
+                catch (JsonException ex)
+                {
+                    Debug.WriteLine($"Failed to deserialize incoming envelope: {ex.Message}");
+                }
+
+                if (envelope == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(envelope.MessageType, "Response", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(envelope.CorrelationId) &&
+                    _pendingResponses.TryRemove(envelope.CorrelationId, out var pending))
+                {
+                    pending.TrySetResult(envelope);
+                    continue;
+                }
+
+                if (string.Equals(envelope.MessageType, "Event", StringComparison.OrdinalIgnoreCase))
+                {
+                    DispatchEvent(envelope);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Expected during shutdown.
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"NamedPipeClient listener I/O error: {ex.Message}");
+            FailAllPending(ex);
+            CleanupStreams();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"NamedPipeClient listener error: {ex.Message}");
+            FailAllPending(ex);
+            CleanupStreams();
+        }
+    }
+
+    private void DispatchEvent(MessageEnvelope envelope)
+    {
+        if (!string.Equals(envelope.Command, "Lock.StateChanged", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<LockStateChangedEventPayload>(envelope.Payload.GetRawText(), _serializerOptions);
+            if (payload != null)
+            {
+                LockStateChanged?.Invoke(payload);
+            }
+        }
+        catch (JsonException ex)
+        {
+            Debug.WriteLine($"Failed to parse Lock.StateChanged event: {ex.Message}");
+        }
+    }
+
+    private void FailAllPending(Exception exception)
+    {
+        foreach (var kvp in _pendingResponses)
+        {
+            if (_pendingResponses.TryRemove(kvp.Key, out var pending))
+            {
+                pending.TrySetException(exception);
+            }
+        }
+    }
+
     private void CleanupStreams()
     {
+        try
+        {
+            _listenCts?.Cancel();
+        }
+        catch
+        {
+            // ignore cancellation errors
+        }
+
+        _listenTask = null;
+        _listenCts?.Dispose();
+        _listenCts = null;
+
         try
         {
             _writer?.Dispose();
@@ -234,5 +338,20 @@ public sealed class NamedPipeClient : INamedPipeClient
             _reader = null;
             _stream = null;
         }
+
+        FailAllPending(new IOException("Pipe disconnected."));
+    }
+
+    private static CommandResponse<TResponse> BuildUnavailableResponse<TResponse>(string message)
+    {
+        return new CommandResponse<TResponse>
+        {
+            Success = false,
+            Error = new ErrorPayload
+            {
+                Code = "Unavailable",
+                Message = message
+            }
+        };
     }
 }

@@ -11,4 +11,8 @@ public interface ILockIpcClient
     Task<CommandResponse<LockCancelResponse>> CancelLockAsync(LockCancelRequest request, CancellationToken cancellationToken = default);
 
     Task<CommandResponse<LockStateResponse>> GetLockStateAsync(CancellationToken cancellationToken = default);
+
+    Task StartListeningAsync(CancellationToken cancellationToken = default);
+
+    event Action<LockStateChangedEventPayload>? LockStateChanged;
 }
