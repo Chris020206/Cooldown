@@ -85,6 +85,7 @@ public sealed class ProcessMonitor
 
                 if (shouldNotify)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[ProcessMonitor] Detected blocked process {proc.ProcessName} (PID {proc.Id}).");
                     ProcessDetected?.Invoke(this, new ProcessDetectedEventArgs
                     {
                         ProcessId = proc.Id,
