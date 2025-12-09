@@ -54,6 +54,17 @@ public sealed class LockManager
             throw new ArgumentOutOfRangeException(nameof(endTime));
         }
 
+        lock (_sync)
+        {
+            if (_currentLock is { IsActive: true } existing &&
+                existing.StartTime == startTime &&
+                existing.EndTime == endTime &&
+                existing.Type == type)
+            {
+                return existing.Clone();
+            }
+        }
+
         var duration = endTime - startTime;
         var lockState = new LockState
         {

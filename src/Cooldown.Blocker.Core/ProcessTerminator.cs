@@ -1,13 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 
 namespace Cooldown.Blocker.Core;
 
 public static class ProcessTerminator
 {
-    public static int TerminateExistingProcesses(IEnumerable<string> blockedProcessNames, Func<int, string, ProcessTerminationResult> terminator)
+    public static ProcessTerminationSummary TerminateExistingProcesses(IEnumerable<string> blockedProcessNames, Func<int, string, ProcessTerminationResult> terminator)
     {
         if (blockedProcessNames == null)
         {
@@ -22,10 +19,11 @@ public static class ProcessTerminator
         var blocked = new HashSet<string>(blockedProcessNames.Where(name => !string.IsNullOrWhiteSpace(name)), StringComparer.OrdinalIgnoreCase);
         if (blocked.Count == 0)
         {
-            return 0;
+            return new ProcessTerminationSummary(0, Array.Empty<string>());
         }
 
         var terminated = 0;
+        var terminatedNames = new List<string>();
 
         foreach (var process in Process.GetProcesses())
         {
@@ -40,6 +38,7 @@ public static class ProcessTerminator
                 if (result.Status == ProcessTerminationStatus.Terminated)
                 {
                     terminated++;
+                    terminatedNames.Add(process.ProcessName);
                 }
             }
             catch
@@ -52,6 +51,6 @@ public static class ProcessTerminator
             }
         }
 
-        return terminated;
+        return new ProcessTerminationSummary(terminated, terminatedNames);
     }
 }
