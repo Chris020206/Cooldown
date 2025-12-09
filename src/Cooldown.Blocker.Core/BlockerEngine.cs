@@ -10,6 +10,7 @@ public sealed class BlockerEngine : IAsyncDisposable
     private CancellationTokenSource? _cts;
     private Task? _monitorTask;
     private Task? _lockTask;
+    private string? _appliedLockKey;
 
     public BlockerEngine(BlockerConfig config)
     {
@@ -85,12 +86,20 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public LockState ApplyServiceLock(LockType type, DateTimeOffset startedAtUtc, DateTimeOffset expiresAtUtc)
     {
+        var key = CreateLockKey(type, startedAtUtc, expiresAtUtc);
+        if (string.Equals(_appliedLockKey, key, StringComparison.Ordinal))
+        {
+            return _lockManager.GetStatus();
+        }
+
+        _appliedLockKey = key;
         var state = _lockManager.ApplyExternalLock(startedAtUtc.ToLocalTime(), expiresAtUtc.ToLocalTime(), type);
         return OnLockActivated(state, "service-sync");
     }
 
     public void ClearServiceLock()
     {
+        _appliedLockKey = null;
         _lockManager.ForceClearLock();
     }
 
@@ -125,17 +134,17 @@ public sealed class BlockerEngine : IAsyncDisposable
         LockStateChanged?.Invoke(this, new LockStateChangedEventArgs(state.Clone()));
     }
 
-    private int TerminateExistingBlockedProcesses()
+    private ProcessTerminationSummary TerminateExistingBlockedProcesses()
     {
         if (_config == null)
         {
-            return 0;
+            return new ProcessTerminationSummary(0, Array.Empty<string>());
         }
 
         var targets = _config.EnabledProcessNamesWithGroups.ToList();
         if (targets.Count == 0)
         {
-            return 0;
+            return new ProcessTerminationSummary(0, Array.Empty<string>());
         }
 
         System.Diagnostics.Debug.WriteLine($"[LockStart] Pre-existing scan. Blocked set ({targets.Count}): {string.Join(", ", targets)}");
@@ -163,9 +172,9 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         if (state.IsActive)
         {
-            var terminated = TerminateExistingBlockedProcesses();
-            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(state.Type, terminated));
-            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, terminated {terminated} pre-existing processes.");
+            var summary = TerminateExistingBlockedProcesses();
+            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(state.Type, summary.TerminatedCount, summary.TerminatedProcessNames));
+            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, terminated {summary.TerminatedCount} pre-existing processes.");
         }
 
         return state;
@@ -188,6 +197,9 @@ public sealed class BlockerEngine : IAsyncDisposable
 
         return null;
     }
+
+    private static string CreateLockKey(LockType type, DateTimeOffset startUtc, DateTimeOffset endUtc) =>
+        $"{type}:{startUtc:O}:{endUtc:O}";
 }
 
 public class LockStateChangedEventArgs : EventArgs
@@ -202,13 +214,16 @@ public class LockStateChangedEventArgs : EventArgs
 
 public class PreExistingProcessesTerminatedEventArgs : EventArgs
 {
-    public PreExistingProcessesTerminatedEventArgs(LockType type, int terminatedCount)
+    public PreExistingProcessesTerminatedEventArgs(LockType type, int terminatedCount, IReadOnlyCollection<string> terminatedProcessNames)
     {
         LockType = type;
         TerminatedCount = terminatedCount;
+        TerminatedProcessNames = terminatedProcessNames;
     }
 
     public LockType LockType { get; }
 
     public int TerminatedCount { get; }
+
+    public IReadOnlyCollection<string> TerminatedProcessNames { get; }
 }

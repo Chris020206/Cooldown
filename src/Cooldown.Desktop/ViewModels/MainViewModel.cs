@@ -431,7 +431,8 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLockStateChanged(object? sender, LockStateChangedEventArgs e)
     {
-        _ = RefreshLockStateAsync();
+        // Local lock manager tick emits this frequently; avoid IPC spam.
+        // UI stays in sync via service push + explicit refresh elsewhere.
     }
 
     private void OnServiceLockStateChanged(LockStateChangedEventPayload payload)
@@ -520,8 +521,8 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
             var message = e.TerminatedCount switch
             {
                 0 => "No blocked apps were running at lock activation.",
-                1 => "Closed 1 blocked app at lock activation.",
-                _ => $"Closed {e.TerminatedCount} blocked apps at lock activation."
+                1 => $"Closed 1 blocked app at lock activation ({string.Join(", ", e.TerminatedProcessNames)}).",
+                _ => $"Closed {e.TerminatedCount} blocked apps at lock activation ({string.Join(", ", e.TerminatedProcessNames)})."
             };
 
             ActivityLog.Insert(0, new ProcessEventViewModel

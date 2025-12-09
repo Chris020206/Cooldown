@@ -25,7 +25,7 @@ public class BlockerConfig
     /// </summary>
     public IEnumerable<string> EnabledProcessNames => Apps
         .Where(app => app.Enabled)
-        .Select(app => NormalizeProcessName(app.Name))
+        .SelectMany(app => ExpandProcessName(NormalizeProcessName(app.Name)))
         .Where(name => !string.IsNullOrWhiteSpace(name))
         .Distinct(StringComparer.OrdinalIgnoreCase);
 
@@ -126,6 +126,22 @@ public class BlockerConfig
         return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
             ? trimmed[..^4]
             : trimmed;
+    }
+
+    private static IEnumerable<string> ExpandProcessName(string normalizedName)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return Array.Empty<string>();
+        }
+
+        // Friendly aliases to real process names for common titles.
+        return normalizedName.ToLowerInvariant() switch
+        {
+            "league of legends" => new[] { "LeagueClientUx", "LeagueClientUxRender" },
+            "league" => new[] { "LeagueClientUx", "LeagueClientUxRender" },
+            _ => new[] { normalizedName }
+        };
     }
 }
 
