@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Cooldown.Blocker.Core;
 
@@ -45,21 +46,23 @@ public sealed class AppDependencyGraph
         }
     }
 
-    public EffectiveBlockSet Expand(IEnumerable<string> selectedAppKeys, IEnumerable<string>? additionalProcessNames = null, Action<string>? logWarning = null)
+    public EffectiveBlockSet Expand(IEnumerable<string> selectedAppKeys, IEnumerable<string>? additionalProcessNames = null, ILogger? logger = null)
     {
-        logWarning ??= msg => Debug.WriteLine(msg);
+        logger ??= Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        var selectedList = selectedAppKeys.ToList();
         var normalizedSelected = new HashSet<string>(
-            selectedAppKeys.Select(NameNormalizer.NormalizeAppKey)
+            selectedList.Select(NameNormalizer.NormalizeAppKey)
                 .Where(key => !string.IsNullOrWhiteSpace(key)),
             StringComparer.OrdinalIgnoreCase);
 
         var effectiveKeys = new HashSet<string>(normalizedSelected, StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var path = new Stack<string>();
+        var addedByDependency = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var key in normalizedSelected)
         {
-            Traverse(key, effectiveKeys, visited, path, logWarning);
+            Traverse(key, effectiveKeys, visited, path, addedByDependency, logger);
         }
 
         var processNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -88,6 +91,19 @@ public sealed class AppDependencyGraph
 
         var orderedKeys = effectiveKeys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
         var orderedProcesses = processNames.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (normalizedSelected.Count != selectedList.Count)
+        {
+            logger.LogDebug(EventIds.DependencyResolution, "Selected apps contained duplicates that were deduplicated. RawCount={RawCount} DedupedCount={DedupedCount}", selectedList.Count, normalizedSelected.Count);
+        }
+
+        foreach (var kvp in addedByDependency)
+        {
+            logger.LogDebug(EventIds.DependencyResolution, "Dependency expansion added {Target} via {Source}", kvp.Key, kvp.Value);
+        }
+
+        logger.LogInformation(EventIds.DependencyResolution, "Resolved app selection. Selected={Selected} EffectiveApps={EffectiveApps} EffectiveProcesses={EffectiveProcesses}", FormatList(normalizedSelected), FormatList(orderedKeys), FormatList(orderedProcesses));
+
         return new EffectiveBlockSet(orderedKeys, orderedProcesses);
     }
 
@@ -96,14 +112,15 @@ public sealed class AppDependencyGraph
         HashSet<string> effectiveKeys,
         HashSet<string> visited,
         Stack<string> path,
-        Action<string> logWarning)
+        Dictionary<string, string> addedByDependency,
+        ILogger logger)
     {
         if (path.Contains(key))
         {
             var cyclePath = $"{string.Join(" -> ", path.Reverse())} -> {key}";
             if (_cycleWarnings.Add(cyclePath))
             {
-                logWarning($"Cycle detected in dependency graph: {cyclePath}");
+                logger.LogWarning(EventIds.DependencyCycle, "Cycle detected in dependency graph: {CyclePath}", cyclePath);
             }
 
             return;
@@ -127,7 +144,12 @@ public sealed class AppDependencyGraph
         path.Push(key);
         foreach (var target in targets)
         {
-            Traverse(target, effectiveKeys, visited, path, logWarning);
+            if (!effectiveKeys.Contains(target))
+            {
+                addedByDependency[target] = key;
+            }
+
+            Traverse(target, effectiveKeys, visited, path, addedByDependency, logger);
         }
 
         path.Pop();
@@ -155,5 +177,16 @@ public sealed class AppDependencyGraph
         };
         copy.Normalize(keyNormalizer);
         return copy;
+    }
+
+    private static string FormatList(IEnumerable<string> items, int cap = 20)
+    {
+        var list = items.Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase).Take(cap + 1).ToList();
+        if (list.Count <= cap)
+        {
+            return string.Join(", ", list);
+        }
+
+        return $"{string.Join(", ", list.Take(cap))} (+{list.Count - cap} more)";
     }
 }

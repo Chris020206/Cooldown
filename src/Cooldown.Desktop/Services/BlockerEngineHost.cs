@@ -53,7 +53,7 @@ public sealed class BlockerEngineHost : IAsyncDisposable
         EnsureRunning();
         var state = _engine!.ApplyServiceLock(type, startedAtUtc, expiresAtUtc);
         var effective = _config?.GetEffectiveBlockSet();
-        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Applying service lock type={type} duration={(expiresAtUtc - startedAtUtc):c} blocked=[{string.Join(", ", effective?.ProcessNames ?? Array.Empty<string>())}]");
+        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Applying service lock type={type} duration={(expiresAtUtc - startedAtUtc):c} selected=[{string.Join(", ", _config?.SelectedAppKeys ?? Array.Empty<string>())}] blocked=[{string.Join(", ", effective?.ProcessNames ?? Array.Empty<string>())}]");
         return state;
     }
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Management;
 using System.Threading;
+using Microsoft.Extensions.Logging;
 
 namespace Cooldown.Blocker.Core;
 
@@ -19,7 +20,8 @@ public static class ProcessTerminator
     public static ProcessTerminationSummary TerminateRunningBlockedProcesses(
         IEnumerable<string> blockedProcessNames,
         Func<int, string, ProcessTerminationResult> terminator,
-        ProcessTerminationOptions? options = null)
+        ProcessTerminationOptions? options = null,
+        ILogger? logger = null)
     {
         if (blockedProcessNames == null)
         {
@@ -32,6 +34,7 @@ public static class ProcessTerminator
         }
 
         options ??= ProcessTerminationOptions.Default;
+        logger ??= Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
         var attempts = Math.Max(1, options.Attempts);
         var delay = options.DelayBetweenAttempts < TimeSpan.Zero
             ? TimeSpan.Zero
@@ -51,6 +54,7 @@ public static class ProcessTerminator
         var terminatedCount = 0;
         var terminatedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var failedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
@@ -64,20 +68,33 @@ public static class ProcessTerminator
             {
                 try
                 {
+                    seenTargets.Add(process.NormalizedName);
+                    if (!string.IsNullOrWhiteSpace(process.ExecutableBaseName))
+                    {
+                        seenTargets.Add(process.ExecutableBaseName);
+                    }
+
                     var result = terminator(process.Id, process.DisplayName);
                     if (result.Status == ProcessTerminationStatus.Terminated)
                     {
                         terminatedCount++;
                         terminatedNames.Add(process.DisplayName);
+                        logger.LogInformation(EventIds.ProcessTerminated, "Terminated blocked process {ProcessName} (PID {Pid}) MatchBy={MatchBy}", process.DisplayName, process.Id, process.MatchBy);
                     }
                     else if (result.Status == ProcessTerminationStatus.Failed)
                     {
                         failedNames.Add(process.DisplayName);
+                        logger.LogWarning(EventIds.ProcessTerminationFailed, "Failed to terminate blocked process {ProcessName} (PID {Pid}) Reason={Reason}", process.DisplayName, process.Id, result.Message);
+                    }
+                    else if (result.Status == ProcessTerminationStatus.AlreadyExited)
+                    {
+                        logger.LogDebug(EventIds.ProcessTerminationFailed, "Process already exited before termination {ProcessName} (PID {Pid})", process.DisplayName, process.Id);
                     }
                 }
                 catch
                 {
                     failedNames.Add(process.DisplayName);
+                    logger.LogWarning(EventIds.ProcessTerminationFailed, "Failed to terminate blocked process {ProcessName} (PID {Pid}) due to unexpected exception", process.DisplayName, process.Id);
                 }
             }
 
@@ -85,6 +102,12 @@ public static class ProcessTerminator
             {
                 Thread.Sleep(delay);
             }
+        }
+
+        var missing = blocked.Except(seenTargets, StringComparer.OrdinalIgnoreCase).ToList();
+        if (missing.Count > 0)
+        {
+            logger.LogDebug(EventIds.ProcessMissing, "Blocked targets not observed during sweep: {Targets}", FormatList(missing));
         }
 
         var orderedTerminatedNames = terminatedNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
@@ -129,7 +152,8 @@ public static class ProcessTerminator
                     continue;
                 }
 
-                results.Add(new ProcessInfo(process.Id, process.ProcessName, normalizedName, executableBaseName, parentId));
+                var matchBy = blockedNames.Contains(normalizedName) ? "ProcessName" : "ExecutablePath";
+                results.Add(new ProcessInfo(process.Id, process.ProcessName, normalizedName, executableBaseName, parentId, matchBy));
             }
             catch
             {
@@ -278,7 +302,18 @@ public static class ProcessTerminator
             : trimmed;
     }
 
-    private sealed record ProcessInfo(int Id, string DisplayName, string NormalizedName, string? ExecutableBaseName, int? ParentId);
+    private sealed record ProcessInfo(int Id, string DisplayName, string NormalizedName, string? ExecutableBaseName, int? ParentId, string MatchBy);
 
     private sealed record ProcessMetadata(int? ParentProcessId, string? ExecutableBaseName);
+
+    private static string FormatList(IEnumerable<string> items, int cap = 20)
+    {
+        var list = items.Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase).Take(cap + 1).ToList();
+        if (list.Count <= cap)
+        {
+            return string.Join(", ", list);
+        }
+
+        return $"{string.Join(", ", list.Take(cap))} (+{list.Count - cap} more)";
+    }
 }

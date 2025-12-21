@@ -2,6 +2,8 @@ namespace Cooldown.Blocker.Core;
 
 public static class NameNormalizer
 {
+    public static string NormalizeAppKey(string key) => NormalizeProcessName(key);
+
     public static string NormalizeProcessName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -14,6 +16,4 @@ public static class NameNormalizer
             ? trimmed[..^4]
             : trimmed;
     }
-
-    public static string NormalizeAppKey(string key) => NormalizeProcessName(key);
 }

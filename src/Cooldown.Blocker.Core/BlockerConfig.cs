@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Cooldown.Blocker.Core.Processes;
+using Microsoft.Extensions.Logging;
 
 namespace Cooldown.Blocker.Core;
 
@@ -39,11 +40,62 @@ public class BlockerConfig
     public IReadOnlyList<ProcessGroup> EnabledProcessGroups => ProcessGroups?.Where(group => group.Enabled).ToList()
         ?? new List<ProcessGroup>();
 
-    public EffectiveBlockSet GetEffectiveBlockSet(Action<string>? logWarning = null)
+    public EffectiveBlockSet GetEffectiveBlockSet(Microsoft.Extensions.Logging.ILogger? logger = null)
     {
-        var graph = new AppDependencyGraph(BuildAppDefinitions(), BuildAppDependencies(), NameNormalizer.NormalizeAppKey);
+        logger ??= Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        var selectedRaw = Apps.Where(a => a.Enabled).Select(a => a.Name).ToList();
+        var selectedNormalized = Apps.Where(a => a.Enabled)
+            .Select(a => new
+            {
+                Raw = a.Name,
+                Normalized = NameNormalizer.NormalizeAppKey(a.Name)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Normalized))
+            .ToList();
+
+        var duplicateCount = selectedNormalized.Count - selectedNormalized.Select(x => x.Normalized).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        if (duplicateCount > 0)
+        {
+            logger.LogDebug(EventIds.DependencyResolution, "Selected apps contained duplicates after normalization. Duplicates={DuplicateCount} RawSelection={Selection}", duplicateCount, FormatList(selectedRaw));
+        }
+
+        var missingDefinitions = new List<string>();
+        var definitions = BuildAppDefinitions(missingDefinitions).ToList();
+        var definitionMap = definitions.ToDictionary(d => d.Key, StringComparer.OrdinalIgnoreCase);
+        foreach (var missing in missingDefinitions)
+        {
+            logger.LogWarning(EventIds.MissingDefinition, "Selected app has no definition; falling back to direct process name. App={App}", missing);
+        }
+
+        foreach (var item in selectedNormalized)
+        {
+            var matchType = definitionMap.ContainsKey(item.Normalized)
+                ? (string.Equals(item.Raw, item.Normalized, StringComparison.OrdinalIgnoreCase) ? "Exact" : "Alias/Normalized")
+                : "Fallback";
+            logger.LogDebug(EventIds.NameNormalization, "App selection normalized. Raw={Raw} Normalized={Normalized} MatchType={MatchType}", item.Raw, item.Normalized, matchType);
+        }
+
+        var dependencies = BuildAppDependencies();
+        var graph = new AppDependencyGraph(definitions, dependencies, NameNormalizer.NormalizeAppKey);
         var additionalProcessNames = EnabledProcessGroups.SelectMany(g => g.AllProcessNames);
-        return graph.Expand(SelectedAppKeys, additionalProcessNames, logWarning);
+        var effective = graph.Expand(selectedNormalized.Select(x => x.Normalized), additionalProcessNames, logger);
+
+        logger.LogInformation(EventIds.DependencyResolution, "Selected apps (raw)={SelectedRaw} Selected apps (normalized)={SelectedNormalized} Effective apps={EffectiveApps} Effective processes={EffectiveProcesses}", FormatList(selectedRaw), FormatList(selectedNormalized.Select(x => x.Normalized)), FormatList(effective.AppKeys), FormatList(effective.ProcessNames));
+
+        if (EnabledProcessGroups.Count > 0)
+        {
+            foreach (var group in EnabledProcessGroups)
+            {
+                logger.LogDebug(EventIds.DependencyResolution, "Process group included: {GroupId} -> {Processes}", group.Id, FormatList(group.AllProcessNames));
+            }
+        }
+
+        if (effective.ProcessNames.Count == 0)
+        {
+            logger.LogWarning(EventIds.EmptyEffectiveSet, "Effective blocked process set is empty. Check app definitions/aliases. Selected={Selected}", FormatList(selectedRaw));
+        }
+
+        return effective;
     }
 
     /// <summary>
@@ -123,7 +175,7 @@ public class BlockerConfig
         };
     }
 
-    private IReadOnlyCollection<AppDefinition> BuildAppDefinitions()
+    private IReadOnlyCollection<AppDefinition> BuildAppDefinitions(List<string>? missingDefinitions = null)
     {
         var definitions = new Dictionary<string, AppDefinition>(StringComparer.OrdinalIgnoreCase);
 
@@ -167,6 +219,7 @@ public class BlockerConfig
                     DisplayName = key,
                     ProcessNames = new List<string> { key }
                 };
+                missingDefinitions?.Add(key);
             }
         }
 
@@ -209,6 +262,17 @@ public class BlockerConfig
         AddRange(DefaultAppRegistry.AppDependencies);
         AddRange(AppDependencies);
         return dependencies.Values;
+    }
+
+    private static string FormatList(IEnumerable<string> items, int cap = 20)
+    {
+        var list = items.Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase).Take(cap + 1).ToList();
+        if (list.Count <= cap)
+        {
+            return string.Join(", ", list);
+        }
+
+        return $"{string.Join(", ", list.Take(cap))} (+{list.Count - cap} more)";
     }
 }
 

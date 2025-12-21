@@ -79,7 +79,7 @@ public class AppDependencyGraphTests
     [Fact]
     public void Handles_CyclesWithWarning()
     {
-        var warnings = new List<string>();
+        var logger = new ListLogger();
         var graph = CreateGraph(
             new[]
             {
@@ -92,11 +92,11 @@ public class AppDependencyGraphTests
                 new AppDependency { SourceKey = "B", TargetKey = "A" }
             });
 
-        var result = graph.Expand(new[] { "A" }, logWarning: warnings.Add);
+        var result = graph.Expand(new[] { "A" }, logger: logger);
 
         AssertContains("A", result.AppKeys);
         AssertContains("B", result.AppKeys);
-        Assert.NotEmpty(warnings);
+        Assert.NotEmpty(logger.Messages);
     }
 
     private static AppDependencyGraph CreateGraph(IEnumerable<AppDefinition> definitions, IEnumerable<AppDependency> dependencies) =>
@@ -105,5 +105,27 @@ public class AppDependencyGraphTests
     private static void AssertContains(string expected, IReadOnlyCollection<string> collection)
     {
         Assert.Contains(collection, item => string.Equals(item, expected, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Messages { get; } = new();
+
+        public IDisposable BeginScope<TState>(TState state) => NullScope.Instance;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose()
+            {
+            }
+        }
     }
 }
