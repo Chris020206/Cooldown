@@ -11,6 +11,7 @@ public sealed class BlockerEngine : IAsyncDisposable
     private Task? _monitorTask;
     private Task? _lockTask;
     private string? _appliedLockKey;
+    private string? _lastLockSweepKey;
 
     public BlockerEngine(BlockerConfig config)
     {
@@ -79,7 +80,13 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public bool CancelLock()
     {
-        return _lockManager.CancelLock();
+        var canceled = _lockManager.CancelLock();
+        if (canceled)
+        {
+            _lastLockSweepKey = null;
+        }
+
+        return canceled;
     }
 
     public LockState GetStatus() => _lockManager.GetStatus();
@@ -100,6 +107,7 @@ public sealed class BlockerEngine : IAsyncDisposable
     public void ClearServiceLock()
     {
         _appliedLockKey = null;
+        _lastLockSweepKey = null;
         _lockManager.ForceClearLock();
     }
 
@@ -138,17 +146,19 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         if (_config == null)
         {
-            return new ProcessTerminationSummary(0, Array.Empty<string>());
+            return ProcessTerminationSummary.Empty;
         }
 
         var targets = _config.EnabledProcessNamesWithGroups.ToList();
         if (targets.Count == 0)
         {
-            return new ProcessTerminationSummary(0, Array.Empty<string>());
+            return ProcessTerminationSummary.Empty;
         }
 
         System.Diagnostics.Debug.WriteLine($"[LockStart] Pre-existing scan. Blocked set ({targets.Count}): {string.Join(", ", targets)}");
-        return ProcessTerminator.TerminateExistingProcesses(targets, HandleProcessTermination);
+        var summary = ProcessTerminator.TerminateRunningBlockedProcesses(targets, HandleProcessTermination, ProcessTerminationOptions.Default);
+        System.Diagnostics.Debug.WriteLine($"[LockStart] Pre-existing scan complete. {summary.SummaryMessage}");
+        return summary;
     }
 
     private ProcessTerminationResult HandleProcessTermination(int processId, string processName)
@@ -172,9 +182,22 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         if (state.IsActive)
         {
+            var lockKey = CreateLockKey(state.Type, state.StartTime, state.EndTime);
+            if (string.Equals(_lastLockSweepKey, lockKey, StringComparison.Ordinal))
+            {
+                System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, lock already enforced (key={lockKey}); skipping pre-existing sweep.");
+                return state;
+            }
+
+            _lastLockSweepKey = lockKey;
             var summary = TerminateExistingBlockedProcesses();
-            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(state.Type, summary.TerminatedCount, summary.TerminatedProcessNames));
-            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, terminated {summary.TerminatedCount} pre-existing processes.");
+            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(
+                state.Type,
+                summary.TerminatedCount,
+                summary.TerminatedProcessNames,
+                summary.FailedProcessNames,
+                summary.SummaryMessage));
+            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, sweep result: {summary.SummaryMessage}");
         }
 
         return state;
@@ -214,11 +237,18 @@ public class LockStateChangedEventArgs : EventArgs
 
 public class PreExistingProcessesTerminatedEventArgs : EventArgs
 {
-    public PreExistingProcessesTerminatedEventArgs(LockType type, int terminatedCount, IReadOnlyCollection<string> terminatedProcessNames)
+    public PreExistingProcessesTerminatedEventArgs(
+        LockType type,
+        int terminatedCount,
+        IReadOnlyCollection<string> terminatedProcessNames,
+        IReadOnlyCollection<string> failedProcessNames,
+        string summaryMessage)
     {
         LockType = type;
         TerminatedCount = terminatedCount;
         TerminatedProcessNames = terminatedProcessNames;
+        FailedProcessNames = failedProcessNames;
+        SummaryMessage = summaryMessage;
     }
 
     public LockType LockType { get; }
@@ -226,4 +256,8 @@ public class PreExistingProcessesTerminatedEventArgs : EventArgs
     public int TerminatedCount { get; }
 
     public IReadOnlyCollection<string> TerminatedProcessNames { get; }
+
+    public IReadOnlyCollection<string> FailedProcessNames { get; }
+
+    public string SummaryMessage { get; }
 }
