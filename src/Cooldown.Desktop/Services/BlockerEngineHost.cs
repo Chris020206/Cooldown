@@ -25,7 +25,8 @@ public sealed class BlockerEngineHost : IAsyncDisposable
         _engine.LockStateChanged += OnLockStateChanged;
         _engine.ProcessBlocked += OnProcessBlocked;
         _engine.PreExistingProcessesTerminated += OnPreExistingProcessesTerminated;
-        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Starting; monitoring {_config.EnabledProcessNamesWithGroups.Count} blocked process names.");
+        var effective = _config.GetEffectiveBlockSet();
+        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Starting; monitoring {effective.ProcessNames.Count} blocked process names.");
         await _engine.StartAsync();
     }
 
@@ -51,7 +52,8 @@ public sealed class BlockerEngineHost : IAsyncDisposable
     {
         EnsureRunning();
         var state = _engine!.ApplyServiceLock(type, startedAtUtc, expiresAtUtc);
-        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Applying service lock type={type} duration={(expiresAtUtc - startedAtUtc):c} blocked=[{string.Join(", ", _config?.EnabledProcessNamesWithGroups ?? Array.Empty<string>())}]");
+        var effective = _config?.GetEffectiveBlockSet();
+        System.Diagnostics.Debug.WriteLine($"[BlockerEngineHost] Applying service lock type={type} duration={(expiresAtUtc - startedAtUtc):c} blocked=[{string.Join(", ", effective?.ProcessNames ?? Array.Empty<string>())}]");
         return state;
     }
 

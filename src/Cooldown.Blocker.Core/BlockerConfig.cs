@@ -8,6 +8,12 @@ public class BlockerConfig
     [JsonPropertyName("apps")]
     public List<BlockableApp> Apps { get; set; } = new();
 
+    [JsonPropertyName("appDefinitions")]
+    public List<AppDefinition> AppDefinitions { get; set; } = new();
+
+    [JsonPropertyName("appDependencies")]
+    public List<AppDependency> AppDependencies { get; set; } = new();
+
     [JsonPropertyName("blockedProcessNames")]
     public List<string>? LegacyBlockedProcessNames { get; set; }
 
@@ -20,14 +26,12 @@ public class BlockerConfig
     [JsonPropertyName("enableToastNotifications")]
     public bool EnableToastNotifications { get; set; } = true;
 
-    /// <summary>
-    /// Primary flat list of enabled process names used by the current blocking engine.
-    /// </summary>
-    public IEnumerable<string> EnabledProcessNames => Apps
+    public IReadOnlyCollection<string> SelectedAppKeys => Apps
         .Where(app => app.Enabled)
-        .SelectMany(app => ExpandProcessName(NormalizeProcessName(app.Name)))
-        .Where(name => !string.IsNullOrWhiteSpace(name))
-        .Distinct(StringComparer.OrdinalIgnoreCase);
+        .Select(app => NameNormalizer.NormalizeAppKey(app.Name))
+        .Where(key => !string.IsNullOrWhiteSpace(key))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     /// <summary>
     /// Optional richer process groups (game/launcher mappings) for future blocking logic.
@@ -35,31 +39,22 @@ public class BlockerConfig
     public IReadOnlyList<ProcessGroup> EnabledProcessGroups => ProcessGroups?.Where(group => group.Enabled).ToList()
         ?? new List<ProcessGroup>();
 
-    /// <summary>
-    /// Combined process names from flat apps and enabled process groups (primary + dependencies).
-    /// </summary>
-    public IReadOnlyCollection<string> EnabledProcessNamesWithGroups
+    public EffectiveBlockSet GetEffectiveBlockSet(Action<string>? logWarning = null)
     {
-        get
-        {
-            var names = new HashSet<string>(EnabledProcessNames, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var group in EnabledProcessGroups)
-            {
-                foreach (var name in group.AllProcessNames)
-                {
-                    if (string.IsNullOrWhiteSpace(name))
-                    {
-                        continue;
-                    }
-
-                    names.Add(name);
-                }
-            }
-
-            return names;
-        }
+        var graph = new AppDependencyGraph(BuildAppDefinitions(), BuildAppDependencies(), NameNormalizer.NormalizeAppKey);
+        var additionalProcessNames = EnabledProcessGroups.SelectMany(g => g.AllProcessNames);
+        return graph.Expand(SelectedAppKeys, additionalProcessNames, logWarning);
     }
+
+    /// <summary>
+    /// Combined process names from selected apps + dependencies + enabled process groups.
+    /// </summary>
+    public IReadOnlyCollection<string> EffectiveProcessNames => GetEffectiveBlockSet().ProcessNames;
+
+    /// <summary>
+    /// Combined app keys from selected apps + dependencies.
+    /// </summary>
+    public IReadOnlyCollection<string> EffectiveAppKeys => GetEffectiveBlockSet().AppKeys;
 
     public void Normalize()
     {
@@ -81,13 +76,25 @@ public class BlockerConfig
                 continue;
             }
 
-            app.Name = NormalizeProcessName(app.Name);
+            app.Name = NameNormalizer.NormalizeAppKey(app.Name);
+        }
+
+        AppDefinitions ??= new List<AppDefinition>();
+        foreach (var def in AppDefinitions)
+        {
+            def.Normalize(NameNormalizer.NormalizeAppKey);
+        }
+
+        AppDependencies ??= new List<AppDependency>();
+        foreach (var dep in AppDependencies)
+        {
+            dep.Normalize(NameNormalizer.NormalizeAppKey);
         }
 
         ProcessGroups ??= new List<ProcessGroup>();
         foreach (var group in ProcessGroups)
         {
-            group.Normalize(NormalizeProcessName);
+            group.Normalize(NameNormalizer.NormalizeProcessName);
         }
     }
 
@@ -98,10 +105,9 @@ public class BlockerConfig
             Apps = new List<BlockableApp>
             {
                 new("League of Legends"),
-                new("RiotClientServices"),
+                new("Counter-Strike 2"),
+                new("Steam"),
                 new("VALORANT"),
-                new("steam"),
-                new("steamwebhelper"),
                 new("EpicGamesLauncher"),
                 new("Battle.net"),
                 new("Overwatch"),
@@ -109,39 +115,100 @@ public class BlockerConfig
                 new("csgo"),
                 new("dota2")
             },
+            AppDefinitions = DefaultAppRegistry.AppDefinitions.ToList(),
+            AppDependencies = DefaultAppRegistry.AppDependencies.ToList(),
             CheckIntervalMs = 1000,
             EnableToastNotifications = true,
             ProcessGroups = new List<ProcessGroup>()
         };
     }
 
-    private static string NormalizeProcessName(string name)
+    private IReadOnlyCollection<AppDefinition> BuildAppDefinitions()
     {
-        if (string.IsNullOrWhiteSpace(name))
+        var definitions = new Dictionary<string, AppDefinition>(StringComparer.OrdinalIgnoreCase);
+
+        void AddRange(IEnumerable<AppDefinition> source)
         {
-            return string.Empty;
+            foreach (var def in source)
+            {
+                if (def == null)
+                {
+                    continue;
+                }
+
+                var copy = new AppDefinition
+                {
+                    Key = def.Key,
+                    DisplayName = def.DisplayName,
+                    ProcessNames = def.ProcessNames.ToList()
+                };
+                copy.Normalize(NameNormalizer.NormalizeAppKey);
+
+                if (string.IsNullOrWhiteSpace(copy.Key))
+                {
+                    continue;
+                }
+
+                definitions[copy.Key] = copy;
+            }
         }
 
-        var trimmed = name.Trim();
-        return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? trimmed[..^4]
-            : trimmed;
+        AddRange(DefaultAppRegistry.AppDefinitions);
+        AddRange(AppDefinitions);
+
+        // Legacy compatibility: any enabled app with no definition maps directly to a process of the same name.
+        foreach (var key in SelectedAppKeys)
+        {
+            if (!definitions.ContainsKey(key))
+            {
+                definitions[key] = new AppDefinition
+                {
+                    Key = key,
+                    DisplayName = key,
+                    ProcessNames = new List<string> { key }
+                };
+            }
+        }
+
+        return definitions.Values;
     }
 
-    private static IEnumerable<string> ExpandProcessName(string normalizedName)
+    private IReadOnlyCollection<AppDependency> BuildAppDependencies()
     {
-        if (string.IsNullOrWhiteSpace(normalizedName))
+        var dependencies = new Dictionary<string, AppDependency>(StringComparer.OrdinalIgnoreCase);
+
+        void AddRange(IEnumerable<AppDependency> source)
         {
-            return Array.Empty<string>();
+            foreach (var dep in source)
+            {
+                if (dep == null)
+                {
+                    continue;
+                }
+
+                var copy = new AppDependency
+                {
+                    SourceKey = dep.SourceKey,
+                    TargetKey = dep.TargetKey,
+                    Type = dep.Type
+                };
+                copy.Normalize(NameNormalizer.NormalizeAppKey);
+                if (string.IsNullOrWhiteSpace(copy.SourceKey) || string.IsNullOrWhiteSpace(copy.TargetKey))
+                {
+                    continue;
+                }
+
+                var hash = $"{copy.SourceKey}=>{copy.TargetKey}";
+                if (!dependencies.ContainsKey(hash))
+                {
+                    dependencies[hash] = copy;
+                }
+            }
         }
 
-        // Friendly aliases to real process names for common titles.
-        return normalizedName.ToLowerInvariant() switch
-        {
-            "league of legends" => new[] { "LeagueClientUx", "LeagueClientUxRender" },
-            "league" => new[] { "LeagueClientUx", "LeagueClientUxRender" },
-            _ => new[] { normalizedName }
-        };
+        AddRange(DefaultAppRegistry.AppDependencies);
+        AddRange(AppDependencies);
+        return dependencies.Values;
     }
 }
 
