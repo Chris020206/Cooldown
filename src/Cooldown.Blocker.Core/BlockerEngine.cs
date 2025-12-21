@@ -1,4 +1,6 @@
 using System.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cooldown.Blocker.Core;
 
@@ -6,21 +8,25 @@ public sealed class BlockerEngine : IAsyncDisposable
 {
     private readonly ProcessMonitor _monitor;
     private readonly LockManager _lockManager;
+    private readonly ILogger<BlockerEngine> _logger;
     private BlockerConfig _config;
     private CancellationTokenSource? _cts;
     private Task? _monitorTask;
     private Task? _lockTask;
     private string? _appliedLockKey;
+    private string? _lastLockSweepKey;
 
-    public BlockerEngine(BlockerConfig config)
+    public BlockerEngine(BlockerConfig config, ILogger<BlockerEngine>? logger = null)
     {
         // Pipeline overview:
         // 1) Config drives the effective blocked set (flat + process groups).
         // 2) ProcessMonitor watches running processes and raises detections.
         // 3) LockManager tracks active locks; BlockerEngine enforces by killing matches (pre-existing + new).
+        _logger = logger ?? NullLogger<BlockerEngine>.Instance;
         config.Normalize();
         _config = config;
-        _monitor = new ProcessMonitor(config.EnabledProcessNamesWithGroups, config.CheckIntervalMs);
+        var effective = _config.GetEffectiveBlockSet(_logger);
+        _monitor = new ProcessMonitor(effective.ProcessNames, config.CheckIntervalMs, _logger);
         _monitor.ProcessDetected += OnProcessDetected;
 
         _lockManager = new LockManager();
@@ -79,7 +85,14 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     public bool CancelLock()
     {
-        return _lockManager.CancelLock();
+        var canceled = _lockManager.CancelLock();
+        if (canceled)
+        {
+            _lastLockSweepKey = null;
+            _logger.LogInformation(EventIds.LockCleared, "Lock canceled by user.");
+        }
+
+        return canceled;
     }
 
     public LockState GetStatus() => _lockManager.GetStatus();
@@ -100,14 +113,17 @@ public sealed class BlockerEngine : IAsyncDisposable
     public void ClearServiceLock()
     {
         _appliedLockKey = null;
+        _lastLockSweepKey = null;
         _lockManager.ForceClearLock();
+        _logger.LogInformation(EventIds.LockCleared, "Lock cleared via service sync.");
     }
 
     public void UpdateConfig(BlockerConfig config)
     {
         config.Normalize();
         _config = config;
-        _monitor.UpdateTargets(config.EnabledProcessNamesWithGroups);
+        var effective = _config.GetEffectiveBlockSet(_logger);
+        _monitor.UpdateTargets(effective.ProcessNames);
         _monitor.UpdateCheckInterval(config.CheckIntervalMs);
     }
 
@@ -118,7 +134,7 @@ public sealed class BlockerEngine : IAsyncDisposable
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[Monitor] Detected blocked process {e.ProcessName} (PID {e.ProcessId}).");
+        _logger.LogInformation(EventIds.ProcessDetected, "Detected blocked process {ProcessName} (PID {Pid})", e.ProcessName, e.ProcessId);
         HandleProcessTermination(e.ProcessId, e.ProcessName);
     }
 
@@ -138,17 +154,20 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         if (_config == null)
         {
-            return new ProcessTerminationSummary(0, Array.Empty<string>());
+            return ProcessTerminationSummary.Empty;
         }
 
-        var targets = _config.EnabledProcessNamesWithGroups.ToList();
+        var effective = _config.GetEffectiveBlockSet(_logger);
+        var targets = effective.ProcessNames.ToList();
         if (targets.Count == 0)
         {
-            return new ProcessTerminationSummary(0, Array.Empty<string>());
+            return ProcessTerminationSummary.Empty;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[LockStart] Pre-existing scan. Blocked set ({targets.Count}): {string.Join(", ", targets)}");
-        return ProcessTerminator.TerminateExistingProcesses(targets, HandleProcessTermination);
+        _logger.LogInformation(EventIds.LockStart, "Pre-existing scan. Selected={Selected} EffectiveApps={EffectiveApps} BlockedProcessesCount={BlockedCount} Processes={Processes}", FormatForLog(_config.SelectedAppKeys), FormatForLog(effective.AppKeys), targets.Count, FormatForLog(targets));
+        var summary = ProcessTerminator.TerminateRunningBlockedProcesses(targets, HandleProcessTermination, ProcessTerminationOptions.Default, _logger);
+        _logger.LogInformation(EventIds.LockStart, "Pre-existing scan complete. {Summary}", summary.SummaryMessage);
+        return summary;
     }
 
     private ProcessTerminationResult HandleProcessTermination(int processId, string processName)
@@ -172,9 +191,24 @@ public sealed class BlockerEngine : IAsyncDisposable
     {
         if (state.IsActive)
         {
+            var effective = _config.GetEffectiveBlockSet(_logger);
+            var lockKey = CreateLockKey(state.Type, state.StartTime, state.EndTime);
+            if (string.Equals(_lastLockSweepKey, lockKey, StringComparison.Ordinal))
+            {
+                System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, lock already enforced (key={lockKey}); skipping pre-existing sweep.");
+                return state;
+            }
+
+            _lastLockSweepKey = lockKey;
+            _logger.LogInformation(EventIds.LockStart, "Lock start enforcement. Source={Source} LockKey={LockKey} LockType={LockType} DurationSeconds={Duration} SelectedApps={Selected} EffectiveApps={EffectiveApps} EffectiveProcessCount={ProcessCount} Processes={Processes}", source, lockKey, state.Type, (state.EndTime - state.StartTime).TotalSeconds, FormatForLog(_config.SelectedAppKeys), FormatForLog(effective.AppKeys), effective.ProcessNames.Count, FormatForLog(effective.ProcessNames));
             var summary = TerminateExistingBlockedProcesses();
-            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(state.Type, summary.TerminatedCount, summary.TerminatedProcessNames));
-            System.Diagnostics.Debug.WriteLine($"[LockStart] Source={source}, terminated {summary.TerminatedCount} pre-existing processes.");
+            PreExistingProcessesTerminated?.Invoke(this, new PreExistingProcessesTerminatedEventArgs(
+                state.Type,
+                summary.TerminatedCount,
+                summary.TerminatedProcessNames,
+                summary.FailedProcessNames,
+                summary.SummaryMessage));
+            _logger.LogInformation(EventIds.LockStart, "Lock start sweep result. Source={Source} {Summary}", source, summary.SummaryMessage);
         }
 
         return state;
@@ -200,6 +234,18 @@ public sealed class BlockerEngine : IAsyncDisposable
 
     private static string CreateLockKey(LockType type, DateTimeOffset startUtc, DateTimeOffset endUtc) =>
         $"{type}:{startUtc:O}:{endUtc:O}";
+
+    private static string FormatForLog(IEnumerable<string> items, int maxItems = 10)
+    {
+        var list = items.Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase).Take(maxItems + 1).ToList();
+        if (list.Count <= maxItems)
+        {
+            return string.Join(", ", list);
+        }
+
+        var head = list.Take(maxItems);
+        return $"{string.Join(", ", head)} (+{list.Count - maxItems} more)";
+    }
 }
 
 public class LockStateChangedEventArgs : EventArgs
@@ -214,11 +260,18 @@ public class LockStateChangedEventArgs : EventArgs
 
 public class PreExistingProcessesTerminatedEventArgs : EventArgs
 {
-    public PreExistingProcessesTerminatedEventArgs(LockType type, int terminatedCount, IReadOnlyCollection<string> terminatedProcessNames)
+    public PreExistingProcessesTerminatedEventArgs(
+        LockType type,
+        int terminatedCount,
+        IReadOnlyCollection<string> terminatedProcessNames,
+        IReadOnlyCollection<string> failedProcessNames,
+        string summaryMessage)
     {
         LockType = type;
         TerminatedCount = terminatedCount;
         TerminatedProcessNames = terminatedProcessNames;
+        FailedProcessNames = failedProcessNames;
+        SummaryMessage = summaryMessage;
     }
 
     public LockType LockType { get; }
@@ -226,4 +279,8 @@ public class PreExistingProcessesTerminatedEventArgs : EventArgs
     public int TerminatedCount { get; }
 
     public IReadOnlyCollection<string> TerminatedProcessNames { get; }
+
+    public IReadOnlyCollection<string> FailedProcessNames { get; }
+
+    public string SummaryMessage { get; }
 }

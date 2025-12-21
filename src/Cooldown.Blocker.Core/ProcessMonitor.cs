@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Cooldown.Blocker.Core;
 
@@ -9,11 +10,13 @@ public sealed class ProcessMonitor
     private readonly object _seenLock = new();
     private HashSet<string> _blockedNames;
     private int _checkIntervalMs;
+    private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
-    public ProcessMonitor(IEnumerable<string> blockedProcessNames, int checkIntervalMs)
+    public ProcessMonitor(IEnumerable<string> blockedProcessNames, int checkIntervalMs, Microsoft.Extensions.Logging.ILogger logger)
     {
         _blockedNames = CreateNameSet(blockedProcessNames);
         _checkIntervalMs = checkIntervalMs;
+        _logger = logger;
     }
 
     public event EventHandler<ProcessDetectedEventArgs>? ProcessDetected;
@@ -85,7 +88,7 @@ public sealed class ProcessMonitor
 
                 if (shouldNotify)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ProcessMonitor] Detected blocked process {proc.ProcessName} (PID {proc.Id}).");
+                    _logger.LogInformation(EventIds.ProcessDetected, "Detected blocked process {ProcessName} (PID {Pid})", proc.ProcessName, proc.Id);
                     ProcessDetected?.Invoke(this, new ProcessDetectedEventArgs
                     {
                         ProcessId = proc.Id,

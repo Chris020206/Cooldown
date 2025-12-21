@@ -518,12 +518,7 @@ public class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _dispatcher.Invoke(() =>
         {
-            var message = e.TerminatedCount switch
-            {
-                0 => "No blocked apps were running at lock activation.",
-                1 => $"Closed 1 blocked app at lock activation ({string.Join(", ", e.TerminatedProcessNames)}).",
-                _ => $"Closed {e.TerminatedCount} blocked apps at lock activation ({string.Join(", ", e.TerminatedProcessNames)})."
-            };
+            var message = e.SummaryMessage;
 
             ActivityLog.Insert(0, new ProcessEventViewModel
             {
