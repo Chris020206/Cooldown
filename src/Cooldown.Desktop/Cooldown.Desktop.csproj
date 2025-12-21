@@ -10,6 +10,7 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Cooldown.Blocker.Core\Cooldown.Blocker.Core.csproj" />

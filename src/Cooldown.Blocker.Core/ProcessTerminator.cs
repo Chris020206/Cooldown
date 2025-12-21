@@ -8,6 +8,11 @@ namespace Cooldown.Blocker.Core;
 
 public static class ProcessTerminator
 {
+    private static readonly long MissingTargetsLogIntervalTicks = (long)(TimeSpan.FromSeconds(30).TotalSeconds * Stopwatch.Frequency);
+    private const int SummaryNameCap = 10;
+    private const int MissingTargetsCap = 10;
+    private static long _lastMissingTargetsLogTick;
+
     private static readonly HashSet<string> ProtectedProcessNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Cooldown",
@@ -91,10 +96,14 @@ public static class ProcessTerminator
                         logger.LogDebug(EventIds.ProcessTerminationFailed, "Process already exited before termination {ProcessName} (PID {Pid})", process.DisplayName, process.Id);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     failedNames.Add(process.DisplayName);
-                    logger.LogWarning(EventIds.ProcessTerminationFailed, "Failed to terminate blocked process {ProcessName} (PID {Pid}) due to unexpected exception", process.DisplayName, process.Id);
+                    logger.LogWarning(EventIds.ProcessTerminationFailed, "Failed to terminate blocked process {ProcessName} (PID {Pid}) Reason={Reason}", process.DisplayName, process.Id, ex.Message);
+                    if (logger.IsEnabled(LogLevel.Debug))
+                    {
+                        logger.LogDebug(EventIds.ProcessTerminationFailed, ex, "Termination exception for blocked process {ProcessName} (PID {Pid})", process.DisplayName, process.Id);
+                    }
                 }
             }
 
@@ -105,9 +114,9 @@ public static class ProcessTerminator
         }
 
         var missing = blocked.Except(seenTargets, StringComparer.OrdinalIgnoreCase).ToList();
-        if (missing.Count > 0)
+        if (missing.Count > 0 && logger.IsEnabled(LogLevel.Debug) && ShouldLogMissingTargets())
         {
-            logger.LogDebug(EventIds.ProcessMissing, "Blocked targets not observed during sweep: {Targets}", FormatList(missing));
+            logger.LogDebug(EventIds.ProcessMissing, "Blocked targets not observed during sweep: {Targets}", FormatList(missing, MissingTargetsCap));
         }
 
         var orderedTerminatedNames = terminatedNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
@@ -277,13 +286,13 @@ public static class ProcessTerminator
         var parts = new List<string>();
         if (terminatedCount > 0)
         {
-            var suffix = terminatedNames.Count > 0 ? $": {string.Join(", ", terminatedNames)}" : string.Empty;
+            var suffix = terminatedNames.Count > 0 ? $": {FormatList(terminatedNames, SummaryNameCap)}" : string.Empty;
             parts.Add($"Closed {terminatedCount} blocked app{(terminatedCount == 1 ? string.Empty : "s")}{suffix}");
         }
 
         if (failedNames.Count > 0)
         {
-            parts.Add($"Failed to close: {string.Join(", ", failedNames)}");
+            parts.Add($"Failed to close {failedNames.Count}: {FormatList(failedNames, SummaryNameCap)}");
         }
 
         return string.Join(". ", parts);
@@ -315,5 +324,18 @@ public static class ProcessTerminator
         }
 
         return $"{string.Join(", ", list.Take(cap))} (+{list.Count - cap} more)";
+    }
+
+    private static bool ShouldLogMissingTargets()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var last = Interlocked.Read(ref _lastMissingTargetsLogTick);
+        if (last != 0 && now - last < MissingTargetsLogIntervalTicks)
+        {
+            return false;
+        }
+
+        Interlocked.Exchange(ref _lastMissingTargetsLogTick, now);
+        return true;
     }
 }

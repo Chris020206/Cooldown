@@ -6,7 +6,7 @@ namespace Cooldown.Blocker.Core;
 public sealed class ProcessMonitor
 {
     private readonly object _namesLock = new();
-    private readonly HashSet<int> _seenProcessIds = new();
+    private readonly Dictionary<int, string> _seenBlocked = new();
     private readonly object _seenLock = new();
     private HashSet<string> _blockedNames;
     private int _checkIntervalMs;
@@ -57,7 +57,7 @@ public sealed class ProcessMonitor
     private void ScanProcesses()
     {
         var processes = Process.GetProcesses();
-        var currentPids = new HashSet<int>();
+        var currentBlockedPids = new HashSet<int>();
 
         HashSet<string> blockedSnapshot;
         lock (_namesLock)
@@ -69,18 +69,17 @@ public sealed class ProcessMonitor
         {
             try
             {
-                currentPids.Add(proc.Id);
-
                 var name = proc.ProcessName;
                 var shouldNotify = false;
 
                 if (blockedSnapshot.Contains(name))
                 {
+                    currentBlockedPids.Add(proc.Id);
                     lock (_seenLock)
                     {
-                        if (!_seenProcessIds.Contains(proc.Id))
+                        if (!_seenBlocked.ContainsKey(proc.Id))
                         {
-                            _seenProcessIds.Add(proc.Id);
+                            _seenBlocked[proc.Id] = proc.ProcessName;
                             shouldNotify = true;
                         }
                     }
@@ -106,9 +105,33 @@ public sealed class ProcessMonitor
             }
         }
 
+        List<(int Id, string Name)>? removed = null;
         lock (_seenLock)
         {
-            _seenProcessIds.RemoveWhere(pid => !currentPids.Contains(pid));
+            foreach (var kvp in _seenBlocked)
+            {
+                if (!currentBlockedPids.Contains(kvp.Key))
+                {
+                    removed ??= new List<(int, string)>();
+                    removed.Add((kvp.Key, kvp.Value));
+                }
+            }
+
+            if (removed != null)
+            {
+                foreach (var item in removed)
+                {
+                    _seenBlocked.Remove(item.Id);
+                }
+            }
+        }
+
+        if (removed != null)
+        {
+            foreach (var item in removed)
+            {
+                _logger.LogInformation(EventIds.ProcessCleared, "Blocked process exited {ProcessName} (PID {Pid})", item.Name, item.Id);
+            }
         }
     }
 
